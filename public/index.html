@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>SZS Pro Max</title>
+    <style>
+        :root {
+            --bg: #20232a; --table: #1e6f42; --panel: #282c34; --text: #abb2bf;
+            --hl: #ffd700; --danger: #e06c75; --card-bg: #fdfdfd;
+        }
+        body { margin:0; background:var(--bg); color:var(--text); font-family:'Segoe UI', 'Microsoft YaHei', sans-serif; overflow:hidden; user-select:none; }
+        Z
+        #app { display:grid; grid-template-columns: 260px 1fr 240px; grid-template-rows: 40px 1fr 240px; height:100vh; width:100vw; }
+        
+        /* UI 组件样式 */
+        .top-bar { grid-column:1/-1; background:var(--panel); display:flex; align-items:center; padding:0 20px; justify-content:space-between; border-bottom:1px solid #111; z-index:10; }
+        .top-bar button { background: #3e4451; color: white; border: 1px solid #555; padding: 4px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .top-bar button:hover { background: #4b5263; }
+        
+        .log-pnl { grid-row:2/-1; background:var(--panel); display:flex; flex-direction:column; border-right:1px solid #111; }
+        #log-box { flex:1; overflow-y:auto; padding:10px; font-size:12px; line-height:1.5; font-family: 'Consolas', monospace; }
+        .log-entry { margin-bottom:5px; border-bottom:1px solid #333; padding-bottom:2px; color: #dcdfe4; }
+        
+        #table { grid-column:2/3; grid-row:2/3; position:relative; background: radial-gradient(circle at center, #2e8b57, #1e6f42); margin:0; box-shadow:inset 0 0 80px rgba(0,0,0,0.8); overflow: hidden; }
+        
+        #my-area { grid-column:2/3; grid-row:3/4; background:var(--panel); padding:10px; border-top:2px solid var(--hl); position:relative; display:flex; flex-direction:column; z-index:20; box-shadow: 0 -5px 20px rgba(0,0,0,0.5); }
+        
+        .info-pnl { grid-column:3/4; grid-row:2/-1; background:var(--panel); border-left:1px solid #111; padding:15px; overflow-y:auto; font-size: 13px; color: #eee; }
+
+        /* 游戏核心元素 */
+        .center-zone { position:absolute; top:45%; left:50%; transform:translate(-50%, -50%); display:flex; gap:40px; align-items: center; z-index: 5; }
+        
+        .pile { 
+            width:100px; height:140px; 
+            border:2px dashed rgba(255,255,255,0.4); border-radius:8px; 
+            display:flex; align-items:center; justify-content:center; 
+            position:relative; background:rgba(0,0,0,0.2); transition:0.2s; 
+            color: rgba(255,255,255,0.8); cursor: pointer; font-weight: bold;
+        }
+        .pile:hover { border-color:var(--hl); background:rgba(255,255,255,0.1); color: var(--hl); }
+        
+        /* 交互区域容器：打出、使用、展示 */
+        .play-zones-container {
+            position:absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display:flex; gap: 15px; z-index: 2;
+        }
+
+        .play-area { 
+            width:160px; height:120px; 
+            border:2px dotted rgba(100, 255, 100, 0.5); border-radius: 10px;
+            display:flex; align-items:center; justify-content:center; 
+            color: rgba(100, 255, 100, 0.7); font-size: 16px; font-weight: bold; 
+            background: rgba(0,0,0,0.1);
+        }
+        
+        .use-area {
+            width:160px; height:120px; 
+            border:2px dotted rgba(255, 100, 100, 0.5); border-radius: 10px;
+            display:flex; align-items:center; justify-content:center; 
+            color: rgba(255, 100, 100, 0.7); font-size: 16px; font-weight: bold; 
+            background: rgba(0,0,0,0.1);
+        }
+
+        /* 新增：展示区 */
+        .show-area {
+            width:160px; height:120px; 
+            border:2px dotted rgba(100, 200, 255, 0.5); border-radius: 10px;
+            display:flex; align-items:center; justify-content:center; 
+            color: rgba(100, 200, 255, 0.7); font-size: 16px; font-weight: bold; 
+            background: rgba(0,0,0,0.1);
+        }
+        
+        .seat { 
+            position:absolute; width:180px; 
+            background:rgba(0,0,0,0.7); border-radius:8px; padding:8px; 
+            transition:0.3s; color:#fff; display:flex; flex-direction:column; 
+            font-size:12px; border:2px solid transparent; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); backdrop-filter: blur(5px);
+            z-index: 15;
+        }
+        .seat.active { border-color:var(--hl); box-shadow: 0 0 20px var(--hl); }
+        .seat.dead { filter:grayscale(1); opacity:0.6; }
+        .seat.flipped { filter: grayscale(100%) brightness(0.6); }
+        .seat.flipped::after { content: '翻面'; position: absolute; top:50%; left:50%; transform:translate(-50%, -50%) rotate(-15deg); font-size:30px; color:rgba(255,255,255,0.5); border: 2px solid white; padding: 5px; border-radius: 5px;}
+        .seat.chained { transform: rotate(5deg); border-color: #00bcd4; box-shadow: 0 0 10px #00bcd4;}
+        .seat.chained::before { content: '🔗'; position: absolute; top:-10px; right:-10px; font-size:24px; z-index:20; }
+
+        .seat-name { font-size: 14px; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; }
+        
+        .zone-container { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 5px; }
+        
+        .drop-zone {
+            height: 70px; 
+            background: rgba(0,0,0,0.4); border: 1px solid #666; border-radius: 4px;
+            position: relative; 
+            display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 1px; padding: 2px;
+            overflow: hidden;
+        }
+        .drop-zone:hover { border-color: var(--hl); background: rgba(255,255,255,0.1); }
+        .drop-zone-label { position: absolute; top:0; left:0; width:100%; font-size:8px; background:rgba(0,0,0,0.6); pointer-events: none; color: white; text-align: center; z-index: 5;}
+
+        /* 卡牌样式 */
+        .card { 
+            width:96px; height:134px; 
+            background: var(--card-bg); color:#333; 
+            border-radius:6px; position:relative; 
+            border:1px solid #999; display:flex; flex-direction:column; 
+            cursor:grab; box-shadow:2px 3px 8px rgba(0,0,0,0.6); 
+            transition: transform 0.2s, box-shadow 0.2s; font-family:'KaiTi', serif; z-index: 1;
+        }
+        .card:hover { transform:translateY(-20px) scale(1.05); z-index:100; border-color:var(--hl); box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        .card.red { color:#b71c1c; } .card.black { color:#212121; }
+        .card-back { background: repeating-linear-gradient(45deg, #444, #444 10px, #555 10px, #555 20px); border: 2px solid #777; display: flex; justify-content: center; align-items: center; color: #aaa; font-weight: bold; font-size: 24px; }
+        
+        .card-tl { position:absolute; top:4px; left:6px; font-size:18px; line-height:1.1; font-weight:bold; font-family: sans-serif;}
+        .card-mid { margin-top:40px; text-align:center; font-size:18px; font-weight:bold; letter-spacing: 2px; }
+        .card-suit-bg { position:absolute; top:45px; left:50%; transform:translateX(-50%); font-size:70px; opacity:0.08; pointer-events:none;}
+        .card-desc { position:absolute; bottom:4px; left:4px; right:4px; font-size:9px; color:#555; transform:scale(0.95); transform-origin:center bottom; line-height: 1.2; }
+        
+        /* 标记展示状态 */
+        .card.is-visible::after { content: '👁️'; position: absolute; top: -5px; right: -5px; font-size: 16px; background: rgba(0,0,0,0.7); border-radius: 50%; padding: 2px; }
+
+        .mini-card { 
+            width: 100%; height: 32px; 
+            background:#fff; border:1px solid #444; 
+            font-size: 9px; display:flex; align-items:center; justify-content:center; 
+            cursor:grab; position:relative; color:#000; border-radius: 2px; 
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.5); 
+            white-space: nowrap; overflow: hidden;
+        }
+        .mini-card:hover { transform: scale(1.1); z-index: 10; border-color: var(--hl);}
+        .mini-card.hidden { background:#444; color:#ccc; border-color: #666; background-image:repeating-linear-gradient(45deg, #444 0, #444 5px, #555 5px, #555 10px); }
+        .mini-card.hand-card-back { background: #555; border: 1px solid #777; }
+        
+        .modal { position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center; flex-direction:column; backdrop-filter: blur(5px); }
+        .setting-row { margin:15px; color:#fff; display:flex; gap:15px; align-items:center; font-size: 16px;}
+        input { background: #333; border: 1px solid #555; color: white; padding: 5px; border-radius: 4px; text-align: center; }
+
+        #ctx-menu { position:absolute; background:#2c3e50; color:#fff; padding:5px 0; border-radius:4px; box-shadow:0 5px 15px rgba(0,0,0,0.8); display:none; z-index:9999; min-width:140px; border: 1px solid #555; max-height: 300px; overflow-y: auto;}
+        .ctx-item { padding:8px 20px; cursor:pointer; font-size:13px; display: flex; align-items: center; gap: 8px;}
+        .ctx-item:hover { background: #34495e; color:var(--hl); }
+        .ctx-sep { height:1px; background:#444; margin:3px 0; }
+
+        #zone-viewer { 
+            position: fixed; top: 5%; left: 5%; width: 90%; height: 90%; 
+            background: rgba(20, 20, 20, 0.98); border: 2px solid var(--hl); border-radius: 10px;
+            z-index: 2000; display: none; flex-direction: column; padding: 20px; color: white;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        }
+        .viewer-section { margin-bottom: 10px; border: 1px solid #444; padding: 10px; border-radius: 5px; background: rgba(50,50,50,0.3); min-height: 120px; display: flex; flex-direction: column;}
+        .viewer-cards { display: flex; flex-wrap: wrap; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+        
+        #judge-toast {
+            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9); border: 2px solid var(--hl); color: white;
+            padding: 20px; border-radius: 10px; z-index: 3000;
+            display: none; flex-direction: column; align-items: center;
+            box-shadow: 0 0 50px var(--hl); animation: popIn 0.3s;
+        }
+        @keyframes popIn { from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+        #confirm-action-btn {
+            position: fixed; bottom: 250px; left: 50%; transform: translateX(-50%);
+            background: var(--danger); color: white; padding: 12px 30px; border: 2px solid white;
+            border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer;
+            z-index: 3000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        }
+        #confirm-action-btn:hover { transform: translateX(-50%) scale(1.1); }
+        
+        .skill-pop { 
+            display:none; position:absolute; background:rgba(255,255,255,0.95); color:#000; 
+            padding:10px; border-radius:6px; width:220px; z-index:200; box-shadow:0 5px 15px rgba(0,0,0,0.5); 
+            top: 100%; left: 50%; transform: translateX(-50%); margin-top: 5px;
+            font-size:12px; pointer-events:none; line-height: 1.4; border: 1px solid #ccc;
+        }
+        .seat:hover .skill-pop { display:block; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div class="top-bar">
+        <div>
+            <button onclick="changeTheme()">🎨 换肤</button>
+            <button onclick="socket.emit('game_action', {roomId, type:'random_gen', data:{range:6}})">🎲 投骰子</button>
+        </div>
+        <div id="host-ctrl" style="display:none; gap:10px;">
+            <button onclick="document.getElementById('set-layer').style.display='flex'">⚙️ 设置</button>
+            <button onclick="socket.emit('game_ctrl', {roomId, type:'force_start'})" style="background:#28a745; border-color:#28a745;">▶ 强制开始</button>
+            <button onclick="socket.emit('game_ctrl', {roomId, type:'restart'})" style="background:var(--danger); border-color: var(--danger);">⚠️ 重置游戏</button>
+        </div>
+        <div>
+            <button onclick="socket.emit('game_ctrl', {roomId, type:'undo'})">↩ 撤销</button>
+            <button onclick="location.reload()">🚪 退出</button>
+        </div>
+    </div>
+
+    <div class="log-pnl">
+        <div id="log-box"></div>
+        <input id="chat-in" placeholder="发送消息... (回车)" style="margin:5px; padding:8px; border:1px solid #444; background:#111; color:#fff; border-radius: 4px;">
+    </div>
+
+    <div id="table" ondragover="dragOver(event)" ondrop="dropTable(event)">
+        <!-- 三个交互区 -->
+        <div class="play-zones-container">
+            <div class="play-area" ondrop="dropPlayArea(event)" ondragover="dragOver(event)">
+                <div style="text-align:center;">🟢 打出区<br><span style="font-size:12px; font-weight:normal; opacity:0.7">(无目标)</span></div>
+            </div>
+            <div class="use-area" ondrop="dropUseArea(event)" ondragover="dragOver(event)">
+                <div style="text-align:center;">🔴 使用区<br><span style="font-size:12px; font-weight:normal; opacity:0.7">(需选目标)</span></div>
+            </div>
+            <div class="show-area" ondrop="dropShowArea(event)" ondragover="dragOver(event)">
+                <div style="text-align:center;">🔵 展示区<br><span style="font-size:12px; font-weight:normal; opacity:0.7">(展示手牌)</span></div>
+            </div>
+        </div>
+
+        <div class="center-zone">
+            <!-- 牌堆 -->
+            <div class="pile" onclick="drawCard()" oncontextmenu="showMenu(event, 'deck')" ondrop="dropDeck(event)" ondragover="dragOver(event)" title="左键摸牌 / 拖入手牌置顶 / 右键更多">
+                <span style="font-size:40px">🎴</span>
+                <span style="position:absolute; bottom:10px; font-size:12px; color:#aaa;">剩余: <span id="deck-num" style="color:#fff">0</span></span>
+            </div>
+            <!-- 弃牌堆 -->
+            <div class="pile" id="discard-zone" ondrop="dropDiscard(event)" ondragover="dragOver(event)" onclick="toggleDiscardView()" title="点击查看弃牌堆 / 拖入弃置">
+                <div id="discard-top">🗑️</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="my-area" ondragover="dragOver(event)" ondrop="dropMyArea(event)">
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px; align-items: flex-end;">
+            <div style="display:flex; gap:10px; align-items:center;">
+                <strong style="font-size:20px; color: var(--hl);" id="my-name">loading...</strong>
+                <div class="hp-ctrl" style="background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 4px; display:flex; flex-direction:column; gap:2px; font-size:10px;">
+                    <div style="display:flex; gap:2px; align-items:center;">
+                        <span>血:</span>
+                        <button onclick="modHp(1)" style="padding: 0 4px;">+</button>
+                        <span id="my-hp" style="font-family:monospace; margin:0 2px; color: #fff;">0</span>
+                        <button onclick="modHp(-1)" style="padding: 0 4px;">-</button>
+                    </div>
+                    <div style="display:flex; gap:2px; align-items:center;">
+                        <span>限:</span>
+                        <button onclick="modMaxHp(1)" style="padding: 0 4px;">+</button>
+                        <span id="my-max-hp" style="font-family:monospace; margin:0 2px; color: #aaa;">0</span>
+                        <button onclick="modMaxHp(-1)" style="padding: 0 4px;">-</button>
+                    </div>
+                </div>
+                <div id="my-role" style="background:#444; padding:4px 8px; cursor:pointer; border-radius: 4px; font-size: 12px; border: 1px solid #666;" onclick="toggleRole()" title="点击亮出身份">身份: ???</div>
+                <div style="display:flex; gap:2px;">
+                    <button onclick="toggleStatus('isFlipped')" style="font-size:10px; padding: 2px 5px;">🔄翻面</button>
+                    <button onclick="toggleStatus('isChained')" style="font-size:10px; padding: 2px 5px;">🔗连环</button>
+                </div>
+                <button onclick="socket.emit('game_action', {roomId, type:'shuffle_hand'})" style="font-size:12px">🔀 洗牌</button>
+                <button onclick="socket.emit('game_action', {roomId, type:'switch_hero'})" style="font-size:12px">💀 切将</button>
+            </div>
+            <div id="my-zones" style="display:flex; gap:8px;"></div>
+        </div>
+        <div id="my-hand" style="display:flex; height:150px; padding:10px; overflow-x:auto; gap:-30px; align-items: center;"></div>
+    </div>
+
+    <div class="info-pnl" id="info-box"></div>
+</div>
+
+<button id="confirm-action-btn" onclick="confirmUseCard()">🔴 确定选择目标 (0)</button>
+
+<!-- 登录 -->
+<div id="login-layer" class="modal">
+    <h1 style="color: var(--hl);">🗡️ SZS Pro Max</h1>
+    <div style="background: #333; padding: 30px; border-radius: 10px;">
+        <input id="u-name" placeholder="请输入昵称" style="padding:10px; width: 200px;"><br><br>
+        <input id="r-id" placeholder="房间号" value="101" style="padding:10px;"><br><br>
+        <button onclick="join()" style="padding:12px 30px; background: var(--table); color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">进入游戏</button>
+    </div>
+</div>
+
+<!-- 设置 -->
+<div id="set-layer" class="modal" style="display:none;">
+    <h2 style="color:white;">游戏设置</h2>
+    <div class="setting-row">主:<input id="cfg-zhu" value="1" size="2"> 忠:<input id="cfg-zhong" value="1" size="2"> 反:<input id="cfg-fan" value="1" size="2"> 内:<input id="cfg-nei" value="1" size="2"></div>
+    <div class="setting-row"><span>候选数(X):</span><input id="cfg-cand" value="5" size="2"> <span>选择数(Y):</span><input id="cfg-pick" value="1" size="2"></div>
+    <div style="margin-top:20px; display:flex; gap:20px;">
+        <button onclick="startGame()" style="padding:10px 30px; background:var(--danger); color:white; border:none; cursor:pointer;">开始选将</button>
+        <button onclick="document.getElementById('set-layer').style.display='none'">取消</button>
+    </div>
+</div>
+
+<!-- 选将 -->
+<div id="pick-layer" class="modal" style="display:none;">
+    <h2 id="pick-title" style="color: white;">选择武将</h2>
+    <div id="hero-pool" style="display:flex; gap:15px; flex-wrap:wrap; justify-content:center; padding:20px; max-width: 800px; max-height: 80vh; overflow-y: auto;"></div>
+    <button onclick="confirmHero()" style="padding:12px 50px; margin-top:20px; background:var(--danger); color:#fff; border:none; cursor:pointer;">确定选择</button>
+</div>
+
+<!-- 弃牌堆 -->
+<div id="discard-viewer" class="modal" style="display:none;" onclick="this.style.display='none'">
+    <div style="background:#fff; width:80%; height:80%; overflow:auto; padding:20px; border-radius: 8px;" onclick="event.stopPropagation()">
+        <h3>弃牌堆 (点击获得)</h3>
+        <div id="discard-list" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+    </div>
+</div>
+
+<!-- 全区域查看 -->
+<div id="zone-viewer" onclick="closeZoneViewer()">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 id="zv-title" style="margin:0;">操作区域</h2>
+        <button onclick="closeZoneViewer()" style="padding:5px 15px;">关闭</button>
+    </div>
+    <div class="viewer-section"><h4>👋 手牌 (拖拽拿走)</h4><div id="zv-hand" class="viewer-cards"></div></div>
+    <div class="viewer-section"><h4>⚔️ 装备区</h4><div id="zv-equip" class="viewer-cards"></div></div>
+    <div class="viewer-section"><h4>⚡ 判定区</h4><div id="zv-judge" class="viewer-cards"></div></div>
+    <div class="viewer-section"><h4>📦 旁侧区</h4><div id="zv-special" class="viewer-cards"></div></div>
+</div>
+
+<!-- 判定 -->
+<div id="judge-toast">
+    <div style="font-size:20px; margin-bottom:10px;">⚡ 判定结果</div>
+    <div id="judge-card-display"></div>
+</div>
+
+<!-- 菜单 -->
+<div id="ctx-menu"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    let roomId, myId, state, dragData = null;
+    let selectedHeroes = [];
+    let targetMode = null; 
+    let selectedTargets = []; 
+    let viewingPid = null; 
+
+    function join() {
+        const name = document.getElementById('u-name').value || 'User';
+        roomId = document.getElementById('r-id').value;
+        socket.emit('join', { name, roomId });
+        document.getElementById('login-layer').style.display='none';
+    }
+
+    socket.on('game_update', s => {
+        state = s; myId = socket.id;
+        if(state.players[myId]?.isHost) document.getElementById('host-ctrl').style.display='flex';
+        
+        if(state.status === 'picking') showPick();
+        else document.getElementById('pick-layer').style.display='none';
+
+        renderTable();
+        renderMyArea();
+        renderInfoPanel(); 
+        renderLogs();
+        
+        if(document.getElementById('zone-viewer').style.display === 'flex' && viewingPid) {
+            socket.emit('game_action', {roomId, type:'req_view_player', data:{targetPid: viewingPid}});
+        }
+    });
+
+    socket.on('res_view_player', (data) => {
+        if (document.getElementById('zone-viewer').style.display === 'flex' && viewingPid === data.targetPid) {
+             renderZoneViewer(data);
+        }
+    });
+
+    socket.on('judge_result', ({card, user}) => {
+        const t = document.getElementById('judge-toast');
+        const c = document.getElementById('judge-card-display');
+        c.innerHTML = '';
+        c.appendChild(createCardEl(card));
+        t.style.display = 'flex';
+        setTimeout(() => t.style.display = 'none', 3000);
+    });
+
+    function renderInfoPanel() {
+        const box = document.getElementById('info-box');
+        const me = state.players[myId];
+        if(!me) return;
+        
+        let html = `
+            <div style="text-align:center; margin-bottom:20px;">
+                <div style="font-size:20px; font-weight:bold; color:var(--hl);">${me.name}</div>
+                <div style="font-size:12px; color:#aaa;">身份: ${me.role}</div>
+            </div>`;
+            
+        if(me.hero) {
+            html += `
+                <div style="text-align:center; margin-bottom:10px;">
+                    <div style="font-size:18px; font-weight:bold;">${me.hero.name}</div>
+                    <div style="font-size:12px;">${me.hero.nation} · ${me.maxHp}体力</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:5px; line-height:1.6; font-size:12px;">
+                    ${me.hero.skills.replace(/【(.*?)】/g, '<br><strong style="color:var(--hl)">【$1】</strong>')}
+                </div>
+                ${me.backupHeroes.length > 0 ? `<div style="margin-top:10px; border-top:1px solid #555; padding-top:10px;">备用: ${me.backupHeroes.map(h=>h.name).join(', ')}</div>` : ''}
+            `;
+        } else {
+            html += '<p style="color:#888; text-align:center;">(等待选将...)</p>';
+        }
+        box.innerHTML = html;
+    }
+
+    function renderTable() {
+        const table = document.getElementById('table');
+        // 保留 play-zones-container 和 center-zone，清除其他
+        [...table.querySelectorAll('.seat')].forEach(c => c.remove());
+
+        if(state.deckCount !== undefined) document.getElementById('deck-num').innerText = state.deckCount;
+        renderDiscardTop();
+
+        const seats = state.seatOrder;
+        if(!seats.includes(myId)) return;
+        
+        const myIdx = seats.indexOf(myId);
+        const sortedSeats = [...seats.slice(myIdx), ...seats.slice(0, myIdx)];
+        const others = sortedSeats.slice(1);
+        
+        const w = table.clientWidth || 800; 
+        const h = table.clientHeight || 600;
+        // 布局调整：增大半径，防止重叠
+        const rx = w/2 - 120, ry = h/2 - 120;
+        
+        others.forEach((pid, i) => {
+            const p = state.players[pid];
+            if(!p) return; 
+
+            const el = document.createElement('div');
+            el.className = `seat ${p.isDead?'dead':''} ${p.isFlipped?'flipped':''} ${p.isChained?'chained':''}`;
+            
+            const step = Math.PI / (others.length + 1);
+            const angle = Math.PI - step * (i + 1);
+            
+            const x = w/2 + rx * Math.cos(angle);
+            const y = h/2 - ry * Math.sin(angle) + 20; 
+            
+            el.style.left = (x - 90) + 'px'; 
+            el.style.top = (y - 100) + 'px';
+            
+            if (targetMode && selectedTargets.includes(pid)) {
+                el.style.borderColor = 'var(--danger)';
+                el.style.boxShadow = '0 0 15px var(--danger)';
+                el.style.transform = 'scale(1.05)';
+            }
+            
+            const heroName = p.hero ? p.hero.name : '未选';
+            const skills = p.hero ? p.hero.skills : '暂无技能';
+            
+            el.innerHTML = `
+                <div class="seat-name">
+                    <span>${p.name}</span>
+                    <small style="background:#444; padding:0 4px; border-radius:3px;">${p.isRoleShown?p.role:'???'}</small>
+                </div>
+                <div style="font-weight:bold; color:orange; margin-bottom: 2px;">${heroName}</div>
+                <div class="skill-pop"><strong>技能：</strong><br>${skills}</div>
+                <div style="margin: 2px 0;">HP: <span style="font-weight:bold; color:${getHpColor(p.hp, p.maxHp)}">${p.hp}/${p.maxHp}</span></div>
+                
+                <div class="zone-container">
+                    <div class="drop-zone" data-zone="hand" title="手牌区 (拖拽互动)">
+                        <span class="drop-zone-label">👋手牌(${p.handCount})</span>
+                        <!-- 显示实体盲牌 -->
+                        <div style="width:100%; display:grid; grid-template-columns: repeat(3, 1fr); gap:1px; overflow:hidden;">
+                            ${renderMiniCards(p.hand, pid, 'hand')}
+                        </div>
+                    </div>
+                    <div class="drop-zone" data-zone="equip" title="装备区">
+                        <span class="drop-zone-label">⚔️装备</span>
+                        ${renderMiniCards(p.zones.equip, pid, 'equip')}
+                    </div>
+                    <div class="drop-zone" data-zone="judge" title="判定区">
+                        <span class="drop-zone-label">⚡判定</span>
+                        ${renderMiniCards(p.zones.judge, pid, 'judge')}
+                    </div>
+                    <div class="drop-zone" data-zone="special" title="旁侧/标记区">
+                        <span class="drop-zone-label">📦旁侧</span>
+                        ${renderMiniCards(p.zones.special, pid, 'special')}
+                    </div>
+                </div>
+                <div class="marks" style="display:flex; gap:2px; margin-top:4px; flex-wrap:wrap;"></div>
+            `;
+
+            const markBox = el.querySelector('.marks');
+            p.marks.forEach(m => {
+                const tag = document.createElement('span');
+                tag.style.background='var(--hl)'; tag.style.color='black'; tag.style.padding='0 4px'; tag.innerText=m; tag.style.borderRadius='2px'; tag.style.fontSize='10px';
+                markBox.appendChild(tag);
+            });
+
+            el.querySelectorAll('.drop-zone').forEach(zone => {
+                zone.ondrop = (e) => dropZone(e, pid, zone.dataset.zone);
+                zone.ondragover = dragOver;
+            });
+            bindMiniCardEvents(el, pid);
+
+            el.oncontextmenu = (e) => showMenu(e, 'player', {pid});
+            el.onclick = () => { if (targetMode) toggleTarget(pid); };
+            if(targetMode) el.style.cursor = 'crosshair';
+
+            table.appendChild(el);
+        });
+    }
+
+    function renderMyArea() {
+        const me = state.players[myId];
+        if(!me) return;
+        document.getElementById('my-name').innerText = me.name + (me.hero?` (${me.hero.name})`:'');
+        document.getElementById('my-hp').innerText = `${me.hp}`;
+        document.getElementById('my-max-hp').innerText = `${me.maxHp}`;
+        
+        const roleEl = document.getElementById('my-role');
+        roleEl.innerText = `身份: ${me.role} ${me.isRoleShown?'(明)':'(暗)'}`;
+        roleEl.style.color = me.isRoleShown ? 'var(--hl)' : '#aaa';
+        
+        const area = document.getElementById('my-area');
+        if (targetMode && selectedTargets.includes(myId)) {
+            area.style.borderColor = 'var(--danger)';
+            area.style.boxShadow = '0 -5px 20px var(--danger)';
+        } else {
+             area.style.borderColor = 'var(--hl)';
+             area.style.boxShadow = '0 -5px 20px rgba(0,0,0,0.5)';
+        }
+        area.onclick = (e) => {
+            if (targetMode && e.target.closest('#my-area')) toggleTarget(myId);
+        };
+        if(targetMode) area.style.cursor = 'crosshair'; else area.style.cursor = 'default';
+
+        const handBox = document.getElementById('my-hand');
+        handBox.innerHTML = '';
+        me.hand.forEach(c => {
+            const el = createCardEl(c);
+            if(c.isVisible) el.classList.add('is-visible'); // 添加CSS类
+            el.draggable = true;
+            el.ondragstart = (e) => dragStart(e, 'hand', myId, c.uuid);
+            el.oncontextmenu = (e) => showMenu(e, 'my_hand', {card:c});
+            handBox.appendChild(el);
+        });
+
+        const zoneBox = document.getElementById('my-zones');
+        zoneBox.innerHTML = `
+            <div class="drop-zone" style="width:70px;" data-zone="equip" ondrop="dropZone(event, '${myId}', 'equip')" ondragover="dragOver(event)">
+                <span class="drop-zone-label">⚔️装备</span>
+                ${renderMiniCards(me.zones.equip, myId, 'equip')}
+            </div>
+            <div class="drop-zone" style="width:70px;" data-zone="judge" ondrop="dropZone(event, '${myId}', 'judge')" ondragover="dragOver(event)">
+                <span class="drop-zone-label">⚡判定</span>
+                ${renderMiniCards(me.zones.judge, myId, 'judge')}
+            </div>
+            <div class="drop-zone" style="width:70px;" data-zone="special" ondrop="dropZone(event, '${myId}', 'special')" ondragover="dragOver(event)">
+                <span class="drop-zone-label">📦旁侧</span>
+                ${renderMiniCards(me.zones.special, myId, 'special')}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:2px;">
+                 <button onclick="addMark()" style="font-size:10px; padding:2px;">+标记</button>
+                 <div id="my-marks-container" style="display:flex; flex-wrap:wrap; max-width:60px;"></div>
+            </div>
+        `;
+        bindMiniCardEvents(zoneBox, myId);
+
+        const mkBox = document.getElementById('my-marks-container');
+        me.marks.forEach((m, i) => {
+            const div = document.createElement('div');
+            div.style.background='var(--hl)'; div.style.fontSize='9px'; div.style.padding='1px'; div.style.margin='1px'; div.innerText=m;
+            div.oncontextmenu = (e) => { e.preventDefault(); socket.emit('game_action', {roomId, type:'mark_op', data:{targetPid:myId, index:i, op:'del'}}); };
+            mkBox.appendChild(div);
+        });
+    }
+
+    function openZoneViewer(pid) {
+        viewingPid = pid;
+        document.getElementById('zone-viewer').style.display = 'flex';
+        document.getElementById('zv-title').innerText = `操作 ${state.players[pid].name} 的区域`;
+        socket.emit('game_action', {roomId, type:'req_view_player', data:{targetPid: pid}});
+    }
+    
+    function closeZoneViewer() {
+        document.getElementById('zone-viewer').style.display = 'none';
+        viewingPid = null;
+    }
+    
+    function renderZoneViewer(data) {
+        const renderList = (cards, containerId, zone) => {
+            const el = document.getElementById(containerId);
+            el.innerHTML = '';
+            cards.forEach(c => {
+                let cardEl;
+                if(c.type === 'back' && !c.suit) { 
+                     cardEl = document.createElement('div'); cardEl.className = 'card card-back'; cardEl.innerText = '?';
+                } else {
+                     cardEl = createCardEl(c);
+                }
+                cardEl.draggable = true;
+                cardEl.ondragstart = (e) => dragStart(e, zone, data.targetPid, c.uuid);
+                el.appendChild(cardEl);
+            });
+        };
+        renderList(data.hand, 'zv-hand', 'hand');
+        renderList(data.zones.equip, 'zv-equip', 'equip');
+        renderList(data.zones.judge, 'zv-judge', 'judge');
+        renderList(data.zones.special, 'zv-special', 'special');
+    }
+
+    function drawCard() { socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:'deck', toPid:myId, toZone:'hand'}, logMsg:'摸了一张牌'}); }
+
+    function dragStart(e, zone, pid, uuid) {
+        dragData = { zone, pid, uuid };
+        e.dataTransfer.setData('text/plain', uuid || 'blind');
+    }
+    function dragOver(e) { e.preventDefault(); }
+    
+    // --- 区域拖放逻辑 ---
+    function dropTable(e) { e.preventDefault(); e.stopPropagation(); }
+
+    function dropPlayArea(e) {
+        e.preventDefault(); e.stopPropagation();
+        if(!dragData) return;
+        if(dragData.pid === myId && dragData.zone === 'hand') {
+            const card = getCard(dragData.uuid);
+            socket.emit('game_action', {roomId, type:'play_card', data:{fromPid:myId, fromZone:'hand', cardUuid:dragData.uuid}, logMsg:`打出了【${card.name}】`});
+        }
+    }
+
+    function dropUseArea(e) {
+        e.preventDefault(); e.stopPropagation();
+        if(!dragData) return;
+        if(dragData.pid === myId && dragData.zone === 'hand') {
+            const card = getCard(dragData.uuid);
+            startTargetMode(card);
+        }
+    }
+
+    function dropShowArea(e) {
+        e.preventDefault(); e.stopPropagation();
+        if(!dragData) return;
+        const card = getCard(dragData.uuid);
+        socket.emit('game_action', {roomId, type:'chat', logMsg:`展示了手牌：【${card.name}】 ${card.suit} ${card.rank}`});
+    }
+    
+    // 将牌拖回牌堆顶
+    function dropDeck(e) {
+        e.preventDefault(); e.stopPropagation();
+        if(!dragData) return;
+        const card = getCard(dragData.uuid);
+        socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:dragData.pid, fromZone:dragData.zone, cardUuid:dragData.uuid, toPid:'deck', toZone:'top'}, logMsg:`将【${card.name||'一张牌'}】置于牌堆顶`});
+    }
+
+    function dropDiscard(e) {
+        e.preventDefault(); e.stopPropagation();
+        if(!dragData) return;
+        const card = getCard(dragData.uuid);
+        socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:dragData.pid, fromZone:dragData.zone, cardUuid:dragData.uuid, toPid:'discard', toZone:'discard'}, logMsg:`弃置了${dragData.pid===myId?'':'他人的'}【${card.name||'牌'}】`});
+    }
+    
+    function dropZone(e, targetPid, targetZone) {
+        e.preventDefault(); e.stopPropagation();
+        if(!dragData) return;
+        
+        let msg = `移动牌到${targetZone}`;
+        if(targetZone === 'hand') msg = '获得/给予手牌';
+        
+        socket.emit('game_action', {
+            roomId, 
+            type:'move_card', 
+            data:{ fromPid:dragData.pid, fromZone:dragData.zone, cardUuid:dragData.uuid, toPid:targetPid, toZone:targetZone }, 
+            logMsg: msg
+        });
+    }
+    function dropMyArea(e) { e.preventDefault(); e.stopPropagation(); dropZone(e, myId, 'hand'); }
+
+    // --- 菜单 ---
+    document.oncontextmenu = (e) => { e.preventDefault(); document.getElementById('ctx-menu').style.display='none'; };
+    document.onclick = () => { document.getElementById('ctx-menu').style.display='none'; }; 
+
+    function showMenu(e, type, data) {
+        e.preventDefault(); e.stopPropagation();
+        const m = document.getElementById('ctx-menu');
+        m.style.display='block'; 
+        
+        const mw = 160; const mh = 200;
+        let x = e.pageX; let y = e.pageY;
+        if (x + mw > window.innerWidth) x = window.innerWidth - mw;
+        if (y + mh > window.innerHeight) y = window.innerHeight - mh;
+        m.style.left = x + 'px'; m.style.top = y + 'px';
+        
+        let html = '';
+        if(type === 'my_hand') {
+            // 更新后的手牌菜单：仅保留展示/暗置和印卡
+            const label = data.card.isVisible ? '🙈 暗置此牌' : '👁️ 展示此牌';
+            html += item(label, () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:myId, uuid:data.card.uuid}}));
+            html += sep();
+            html += item('🖨️ 印卡', () => { const n=prompt('名称'); if(n) socket.emit('game_action', {roomId, type:'print_card', data:{name:n}}) });
+        } else if(type === 'deck') {
+            html += item('📥 摸一张', () => drawCard());
+            html += item('⚡ 判定 (翻开)', () => socket.emit('game_action', {roomId, type:'judge_top'}));
+            html += item('🔙 摸底牌', () => socket.emit('game_action', {roomId, type:'draw_bottom', logMsg:'摸了一张底牌'}));
+        } else if(type === 'player') {
+             html += item('✋ 操作区域/查看手牌', () => openZoneViewer(data.pid));
+             if (state.players[myId].isHost && data.pid !== myId) {
+                 html += item('👑 移交房主', () => socket.emit('game_ctrl', {roomId, type:'transfer_host', data:{targetPid: data.pid}}));
+             }
+        } else if(type === 'zone_card') {
+             // 允许翻开他人手牌或旁侧牌
+             if(data.zone === 'hand' || data.zone === 'special') {
+                const card = getCard(data.card.uuid); // Try to get local info if possible
+                const isVis = card.isVisible || (data.card.type !== 'back' && data.card.name !== '?');
+                const label = isVis ? '🙈 盖上' : '👁️ 翻开';
+                html += item(label, () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:data.pid, uuid:data.card.uuid}}));
+            }
+            html += item('🖐️ 拿走', () => socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:data.pid, fromZone:data.zone, cardUuid:data.card.uuid, toPid:myId, toZone:'hand'}, logMsg:`拿走了【${data.card.name||'一张牌'}】`}));
+            html += item('🗑️ 弃置', () => socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:data.pid, fromZone:data.zone, cardUuid:data.card.uuid, toPid:'discard'}, logMsg:`弃置了【${data.card.name||'一张牌'}】`}));
+        }
+        m.innerHTML = html;
+    }
+
+    const item = (t, f) => `<div class="ctx-item" onclick="(${f})()">${t}</div>`;
+    const sep = () => `<div class="ctx-sep"></div>`;
+
+    function startTargetMode(card) {
+        targetMode = card;
+        selectedTargets = [];
+        document.body.style.cursor = 'crosshair';
+        
+        const btn = document.getElementById('confirm-action-btn');
+        btn.style.display = 'block';
+        btn.innerText = `🔴 确定对 0 人使用【${card.name}】`;
+        
+        renderTable(); 
+        renderMyArea(); 
+    }
+    
+    function toggleTarget(pid) {
+        if (selectedTargets.includes(pid)) {
+            selectedTargets = selectedTargets.filter(p => p !== pid);
+        } else {
+            selectedTargets.push(pid);
+        }
+        document.getElementById('confirm-action-btn').innerText = `🔴 确定对 ${selectedTargets.length} 人使用【${targetMode.name}】`;
+        renderTable();
+        renderMyArea();
+    }
+    
+    function confirmUseCard() {
+        if (!targetMode) return;
+        
+        const targetPids = selectedTargets.length > 0 ? selectedTargets : null;
+        
+        socket.emit('game_action', {
+            roomId, 
+            type:'use_card', 
+            data:{
+                fromPid:myId, 
+                fromZone:'hand', 
+                cardUuid:targetMode.uuid,
+                targetPids: targetPids,
+                cardName: targetMode.name
+            }
+        });
+        
+        cancelTarget();
+    }
+    
+    function cancelTarget() {
+        targetMode = null;
+        selectedTargets = [];
+        document.body.style.cursor = 'default';
+        document.getElementById('confirm-action-btn').style.display = 'none';
+        renderTable();
+        renderMyArea();
+    }
+
+    // --- 通用与渲染辅助 ---
+    function renderMiniCards(cards, pid, zone) {
+        if(!cards) return '';
+        return cards.map(c => {
+            const isHidden = zone==='special' && !c.isVisible && pid !== myId;
+            // 他人手牌实体化
+            if (zone === 'hand' && pid !== myId) {
+                // 如果服务器发来的是明牌（isVisible=true），则显示名字
+                if (c.type !== 'back') {
+                     return `<div class="mini-card" data-uuid="${c.uuid}" data-zone="${zone}" title="${c.name}">${c.name[0]}</div>`;
+                }
+                return `<div class="mini-card hand-card-back" data-uuid="${c.uuid}" data-zone="${zone}" title="手牌"></div>`;
+            }
+            const displayName = c.name ? c.name : '?';
+            return `<div class="mini-card ${isHidden?'hidden':''}" data-uuid="${c.uuid}" data-zone="${zone}" title="${c.name || ''}">${isHidden?'?':displayName}</div>`;
+        }).join('');
+    }
+    function bindMiniCardEvents(parent, pid) {
+        parent.querySelectorAll('.mini-card').forEach(el => {
+            el.draggable = true;
+            el.ondragstart = (e) => dragStart(e, el.dataset.zone, pid, el.dataset.uuid);
+            // 尝试获取本地卡牌信息，如果没有则用 dataset
+            let card = getCard(el.dataset.uuid);
+            if (!card.uuid) card = { uuid: el.dataset.uuid, type: 'back' }; // Fallback
+            el.oncontextmenu = (e) => showMenu(e, 'zone_card', {card, zone:el.dataset.zone, pid});
+        });
+    }
+    function getCard(uuid) {
+        if (!state) return {name:'未知'};
+        const all = [
+            ...state.players[myId].hand, 
+            ...state.discardPile,
+            ...Object.values(state.players).flatMap(p => [...p.zones.equip, ...p.zones.judge, ...p.zones.special])
+        ];
+        return all.find(c => c.uuid === uuid) || {name:'未知'};
+    }
+    function createCardEl(c) {
+        const el = document.createElement('div');
+        el.className = `card ${['heart','diamond'].includes(c.suit || '') ? 'red' : 'black'}`;
+        el.innerHTML = renderCardInner(c);
+        return el;
+    }
+    function renderCardInner(c) {
+        const sMap = {spade:'♠', heart:'♥', club:'♣', diamond:'♦'};
+        const suit = c.suit || '';
+        const rank = c.rank || '';
+        const name = c.name || '';
+        const desc = c.description || '';
+        const suitIcon = sMap[suit] || suit;
+        return `
+            <div class="card-tl">${rank}<br><span style="font-size:14px">${suitIcon}</span></div>
+            <div class="card-mid">${name}</div>
+            <div class="card-suit-bg">${suitIcon}</div>
+            <div class="card-desc">${desc}</div>
+        `;
+    }
+    function renderDiscardTop() {
+        const top = state.discardPile[state.discardPile.length-1];
+        const el = document.getElementById('discard-top');
+        if(top) {
+            el.innerHTML = renderCardInner(top);
+            el.className = `card ${['heart','diamond'].includes(top.suit)?'red':'black'}`;
+            el.style.width='100%'; el.style.height='100%'; el.style.border='none';
+        } else {
+            el.innerHTML = '🗑️'; el.className='';
+        }
+    }
+    function renderLogs() {
+        const box = document.getElementById('log-box');
+        box.innerHTML = state.logs.map(l => `<div class="log-entry"><span style="color:#666">[${l.time}]</span> <span style="font-weight:bold">${l.user}</span>: ${l.html}</div>`).join('');
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function startGame() {
+        const config = {
+            roleConfig: {
+                zhu: +document.getElementById('cfg-zhu').value,
+                zhong: +document.getElementById('cfg-zhong').value,
+                fan: +document.getElementById('cfg-fan').value,
+                nei: +document.getElementById('cfg-nei').value
+            },
+            pickCount: +document.getElementById('cfg-pick').value,
+            candidateCount: +document.getElementById('cfg-cand').value
+        };
+        socket.emit('game_ctrl', {roomId, type:'start_pick', data:config});
+        document.getElementById('set-layer').style.display='none';
+    }
+    function showPick() {
+        const p = state.players[myId];
+        if(!p.heroPool) return;
+        document.getElementById('pick-layer').style.display='flex';
+        const pool = document.getElementById('hero-pool');
+        pool.innerHTML = '';
+        p.heroPool.forEach(h => {
+            const el = document.createElement('div');
+            el.className = 'card'; el.style.width='140px'; el.style.height='200px'; el.style.background='white'; el.style.color='black';
+            el.innerHTML = `
+                <div style="font-size:16px; font-weight:bold; padding:5px; border-bottom:1px solid #eee;">${h.name}</div>
+                <div style="padding:5px; font-size:12px; color:#555;">${h.nation} / ${h.max_hp}血</div>
+                <div style="padding:5px; font-size:11px; overflow-y:auto; height:130px; line-height:1.4;">${h.skills}</div>
+            `;
+            el.onclick = () => {
+                if(selectedHeroes.includes(h.id)) { selectedHeroes = selectedHeroes.filter(x=>x!==h.id); el.style.border='1px solid #ccc'; el.style.background='white'; }
+                else { selectedHeroes.push(h.id); el.style.border='2px solid var(--danger)'; el.style.background='#fff0f0'; }
+            }
+            pool.appendChild(el);
+        });
+    }
+    function confirmHero() {
+        socket.emit('game_ctrl', {roomId, type:'confirm_hero', data:{heroIds:selectedHeroes}});
+        document.getElementById('pick-layer').style.display='none';
+    }
+    function toggleRole() {
+        const r = state.players[myId].role;
+        if(confirm(`你的身份是：【${r}】。\n确定要向所有人亮明吗？`)) {
+            socket.emit('game_action', {roomId, type:'update_prop', data:{targetPid:myId, prop:'isRoleShown', value:true}, logMsg:`亮明了身份：${r}`});
+        }
+    }
+    
+    // 状态切换
+    function toggleStatus(prop) {
+        const current = state.players[myId][prop];
+        const label = prop === 'isFlipped' ? '翻面' : '连环';
+        socket.emit('game_action', {
+            roomId, 
+            type: 'update_prop', 
+            data: { targetPid: myId, prop: prop, value: !current },
+            logMsg: `${!current ? '进入了' : '解除了'}${label}状态`
+        });
+    }
+
+    function modHp(v) {
+        const p = state.players[myId];
+        const n = p.hp + v;
+        socket.emit('game_action', {roomId, type:'update_prop', data:{targetPid:myId, prop:'hp', value:n}, logMsg:`体力 ${v>0?'+':''}${v}`});
+    }
+    function modMaxHp(v) {
+        const p = state.players[myId];
+        const n = Math.max(1, p.maxHp + v);
+        socket.emit('game_action', {roomId, type:'update_prop', data:{targetPid:myId, prop:'maxHp', value:n}, logMsg:`体力上限 ${v>0?'+':''}${v}`});
+    }
+    function addMark() { const t = prompt('标记名:'); if(t) socket.emit('game_action', {roomId, type:'mark_op', data:{targetPid:myId, op:'add', text:t}}); }
+    function getHpColor(hp, max) {
+        const r = hp/max;
+        if(r < 0.3) return '#ff4444';
+        if(r < 0.6) return '#ffbb33';
+        return '#00C851';
+    }
+    function toggleDiscardView() {
+        document.getElementById('discard-viewer').style.display='flex';
+        const list = document.getElementById('discard-list');
+        list.innerHTML = '';
+        state.discardPile.slice().reverse().forEach(c => {
+            const el = createCardEl(c);
+            el.onclick = () => { if(confirm('获得此牌?')) socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:'discard', cardUuid:c.uuid, toPid:myId, toZone:'hand'}, logMsg:`从弃牌堆获得了【${c.name}】`}); };
+            list.appendChild(el);
+        });
+    }
+    
+    document.getElementById('chat-in').onkeypress = (e) => {
+        if(e.key === 'Enter') { 
+            socket.emit('game_action', {roomId, type:'chat', logMsg:e.target.value}); 
+            e.target.value=''; 
+        }
+    }
+    
+    function changeTheme() {
+        const themes = [
+            { bg:'#20232a', table:'#1e6f42', panel:'#282c34', text:'#abb2bf', hl:'#ffd700' },
+            { bg:'#5d4037', table:'#a1887f', panel:'#4e342e', text:'#fff3e0', hl:'#ff6f00' },
+            { bg:'#2c3e50', table:'#34495e', panel:'#2c3e50', text:'#ecf0f1', hl:'#3498db' }
+        ];
+        const cur = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+        let idx = themes.findIndex(t => t.bg === cur);
+        idx = (idx + 1) % themes.length;
+        const t = themes[idx];
+        const r = document.documentElement.style;
+        r.setProperty('--bg', t.bg); r.setProperty('--table', t.table); 
+        r.setProperty('--panel', t.panel); r.setProperty('--text', t.text); r.setProperty('--hl', t.hl);
+    }
+</script>
+</body>
+</html>
