@@ -219,18 +219,22 @@ io.on('connection', (socket) => {
                 }
                 break;
             
-            // --- 修改：支持手牌和旁侧牌的翻面 ---
+            // --- 修改：三态切换逻辑 ---
             case 'toggle_card_visible':
                 if(room.players[data.targetPid]) {
                     const targetP = room.players[data.targetPid];
-                    // 先找特殊区
+                    // 优先找特殊区
                     let card = targetP.zones.special.find(c => c.uuid === data.uuid);
                     // 没找到再找手牌
                     if(!card) card = targetP.hand.find(c => c.uuid === data.uuid);
                     
                     if(card) {
-                        card.isVisible = !card.isVisible;
-                        logMsg = `${p.name} ${card.isVisible?'展示':'暗置'}了 ${targetP.name===p.name?'自己':'他人'} 的一张牌`;
+                        // 0:暗, 1:己, 2:明
+                        const current = card.visType || 0;
+                        card.visType = (current + 1) % 3;
+                        
+                        const states = ['🙈均暗置', '🤫仅自己', '👁️均明置'];
+                        logMsg = `${p.name} 切换牌状态为: ${states[card.visType]}`;
                     }
                 }
                 break;
@@ -327,7 +331,20 @@ function checkGameStart(room) {
 function handleMoveCard(room, { fromPid, fromZone, cardUuid, toPid, toZone }) {
     let card = null, source = null;
     
-    if(fromPid === 'deck') { source = room.deck; card = source.pop(); }
+    // --- 修改：牌堆自动洗牌逻辑 ---
+    if(fromPid === 'deck') { 
+        if (room.deck.length === 0) {
+            if (room.discardPile.length > 0) {
+                room.deck = shuffle(room.discardPile);
+                room.discardPile = [];
+                addLog(room, '系统', '🔄 牌堆耗尽，弃牌堆已重洗');
+            } else {
+                return; // 无牌可抽
+            }
+        }
+        source = room.deck; 
+        card = source.pop(); 
+    }
     else if(fromPid === 'discard') { 
         source = room.discardPile; 
         const idx = source.findIndex(c => c.uuid === cardUuid);
@@ -348,7 +365,8 @@ function handleMoveCard(room, { fromPid, fromZone, cardUuid, toPid, toZone }) {
     else if(toPid === 'discard') { room.discardPile.push(card); }
     else if(room.players[toPid]) {
         const p = room.players[toPid];
-        if(toZone !== 'special') delete card.isVisible;
+        // 移动重置可见性，除非是移入 special 且不希望重置(这里默认重置，由玩家手动调整)
+        delete card.visType; 
         
         if(toZone === 'hand') p.hand.push(card);
         else if (p.zones[toZone]) p.zones[toZone].push(card);
@@ -375,19 +393,44 @@ function broadcast(roomId) {
             const clean = JSON.parse(JSON.stringify(room));
             delete clean.history;
             Object.values(clean.players).forEach(p => {
+                const isOwner = (p.id === sid);
+                
+                // --- 修改：基于 visType 的广播逻辑 ---
+                // 遍历所有区域进行脱敏
+                ['hand', 'zones'].forEach(prop => {
+                    if (prop === 'hand') {
+                        // 手牌脱敏：如果不是自己，且 visType!=2(明)，则隐藏
+                        if (!isOwner) {
+                            p.hand = p.hand.map(c => {
+                                const v = c.visType || 0;
+                                if (v === 2) return c; // 均明置
+                                return { uuid: c.uuid, type: 'back', suit: '', rank: '', name: '?', visType: v };
+                            });
+                            p.handCount = p.hand.length;
+                        }
+                    } else {
+                        // 区域脱敏
+                        ['equip', 'judge', 'special'].forEach(z => {
+                            p.zones[z] = p.zones[z].map(c => {
+                                const v = c.visType || 0;
+                                // 0: 暗(仅卡背), 1: 己(仅自己看), 2: 明(全看)
+                                let show = false;
+                                if (v === 2) show = true;
+                                if (v === 1 && isOwner) show = true;
+                                // 装备和判定区通常默认是明置的，但在我们的逻辑里，move进去默认visType=undefined(0)
+                                // 为了保持旧习惯：装备/判定默认所有人可见?
+                                // 不，新逻辑下所有区域默认暗置。
+                                // 修正：装备和判定区通常必须可见。
+                                if (z === 'equip' || z === 'judge') show = true; 
+                                
+                                if (show) return c;
+                                return { uuid: c.uuid, type: 'back', name: '?', visType: v };
+                            });
+                        });
+                    }
+                });
+
                 if(p.id !== sid) {
-                    p.handCount = p.hand.length;
-                    // --- 修改：如果 marked as visible，则发送真实数据，否则发送卡背 ---
-                    p.hand = p.hand.map(c => {
-                        if (c.isVisible) return c; // 展示状态：发送全数据
-                        return { 
-                            uuid: c.uuid, 
-                            type: 'back', 
-                            suit: '', 
-                            rank: '', 
-                            name: '?' 
-                        };
-                    });
                     if(!p.isRoleShown) p.role = '???';
                 }
             });
