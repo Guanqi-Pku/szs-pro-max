@@ -9,7 +9,7 @@
             --hl: #ffd700; --danger: #e06c75; --card-bg: #fdfdfd;
         }
         body { margin:0; background:var(--bg); color:var(--text); font-family:'Segoe UI', 'Microsoft YaHei', sans-serif; overflow:hidden; user-select:none; }
-        Z
+        
         #app { display:grid; grid-template-columns: 260px 1fr 240px; grid-template-rows: 40px 1fr 240px; height:100vh; width:100vw; }
         
         /* UI 组件样式 */
@@ -132,7 +132,7 @@
         .mini-card.hidden { background:#444; color:#ccc; border-color: #666; background-image:repeating-linear-gradient(45deg, #444 0, #444 5px, #555 5px, #555 10px); }
         .mini-card.hand-card-back { background: #555; border: 1px solid #777; }
         
-        .modal { position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center; flex-direction:column; backdrop-filter: blur(5px); }
+        .modal { position:fixed; top:0; left:0; w:100%; h:100%; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center; flex-direction:column; backdrop-filter: blur(5px); }
         .setting-row { margin:15px; color:#fff; display:flex; gap:15px; align-items:center; font-size: 16px;}
         input { background: #333; border: 1px solid #555; color: white; padding: 5px; border-radius: 4px; text-align: center; }
 
