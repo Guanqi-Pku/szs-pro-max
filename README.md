@@ -15,10 +15,13 @@
 2. 安装依赖下载本项目代码，解压后在项目文件夹内打开终端 (CMD / PowerShell / Terminal)，运行：`npm install`
 
 
-3. 启动游戏在终端运行：`npm start`看到输出 http://localhost:3000 即表示服务器启动成功。
+3. 安装 csv 解析库： `npm install csv-parser`
 
 
-4. 进入游戏房主/本机：浏览器访问 http://localhost:3000
+4. 启动游戏在终端运行：`npm start`看到输出 http://localhost:3000 即表示服务器启动成功。
+
+
+5. 进入游戏房主/本机：浏览器访问 http://localhost:3000
 
 
 ### 远程联机教程
@@ -77,4 +80,5 @@ Forwarding  https://62a8xxxx.cpolar.io -> http://localhost:3000
 房主权限：点击顶部“设置”可配置身份数量（主/忠/反/内）和选将模式（X选Y）。
 
 拥有“强制开始”和“撤销操作”权限。
+
 
