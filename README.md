@@ -12,16 +12,13 @@
 1. 环境准备确保你的电脑安装了 Node.js (版本 v14 以上)。下载地址: https://nodejs.org/
 
 
-2. 安装依赖下载本项目代码，解压后在项目文件夹内打开终端 (CMD / PowerShell / Terminal)，运行：`npm install`
+2. 安装依赖下载本项目代码，解压后在项目文件夹内打开终端 (CMD / PowerShell / Terminal)，运行：```npm install```
 
 
-3. 安装 csv 解析库： `npm install csv-parser`
+3. 启动游戏在终端运行：`npm start`看到输出 http://localhost:3000 即表示服务器启动成功。
 
 
-4. 启动游戏在终端运行：`npm start`看到输出 http://localhost:3000 即表示服务器启动成功。
-
-
-5. 进入游戏房主/本机：浏览器访问 http://localhost:3000
+4. 进入游戏房主/本机：浏览器访问 http://localhost:3000
 
 
 ### 🕶 远程联机教程
@@ -32,7 +29,7 @@
 
 1. 下载安装解压 Cpolar。https://www.cpolar.com/
 
-2. 连接账户：在 Cpolar 的后台网页，找到 “验证” (Auth) 栏目。你会看到`./cpolar authtoken xxxxxxx...`，点击复制。
+2. 连接账户：在 Cpolar 的后台网页，找到 “验证” (Auth) 栏目。你会看到```./cpolar authtoken xxxxxxx...```，点击复制。
 
 3. 双击打开你刚才解压的 cpolar.exe，会打开一个命令行窗口。
 
@@ -64,6 +61,8 @@ Forwarding  https://62a8xxxx.cpolar.io -> http://localhost:3000
 
 装备/判定/角色旁牌堆：直接将牌拖到自己或他人的对应区域（判定区/装备区/角色旁）。
 
+切换角色旁牌堆可见性：左键单击在均不可见/仅自己可见/均可见之间切换
+
 展示：将自己或别人的手牌拖入展示区
 
 翻面/翻回、重置/横置、死亡/复活：点击相应的按钮
@@ -80,6 +79,7 @@ Forwarding  https://62a8xxxx.cpolar.io -> http://localhost:3000
 房主权限：点击顶部“设置”可配置身份数量（主/忠/反/内）和选将模式（X选Y）。
 
 拥有“强制开始”和“撤销操作”权限。
+
 
 
 
