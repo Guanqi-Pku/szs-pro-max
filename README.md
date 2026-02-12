@@ -24,7 +24,7 @@
 5. 进入游戏房主/本机：浏览器访问 http://localhost:3000
 
 
-### 远程联机教程
+### 🕶 远程联机教程
 
 如果朋友不再同一个 WiFi 下，你需要使用内网穿透工具将你的本地服务器暴露到公网。这里使用 Cpolar 作为示例。
 
@@ -46,7 +46,7 @@ Web Interface http://127.0.0.1:4040
 Forwarding  http://62a8xxxx.cpolar.io -> http://localhost:3000
 Forwarding  https://62a8xxxx.cpolar.io -> http://localhost:3000
 ```
-复制那个 http 开头的网址，发给朋友点击进入即可开始联机。
+复制 [http](http://62a8xxxx.cpolar.io) 网址，发给朋友点击进入即可开始联机。
 
 ### 🎮 游戏操作指南基本交互：
 
@@ -80,5 +80,6 @@ Forwarding  https://62a8xxxx.cpolar.io -> http://localhost:3000
 房主权限：点击顶部“设置”可配置身份数量（主/忠/反/内）和选将模式（X选Y）。
 
 拥有“强制开始”和“撤销操作”权限。
+
 
 
