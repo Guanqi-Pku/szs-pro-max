@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>SZS Pro Max</title>
+    <title>SGS Pro Max</title>
     <style>
         :root {
             --bg: #20232a; --table: #1e6f42; --panel: #282c34; --text: #abb2bf;
@@ -12,7 +12,6 @@
         
         #app { display:grid; grid-template-columns: 260px 1fr 240px; grid-template-rows: 40px 1fr 240px; height:100vh; width:100vw; }
         
-        /* UI 组件样式 */
         .top-bar { grid-column:1/-1; background:var(--panel); display:flex; align-items:center; padding:0 20px; justify-content:space-between; border-bottom:1px solid #111; z-index:10; }
         .top-bar button { background: #3e4451; color: white; border: 1px solid #555; padding: 4px 12px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
         .top-bar button:hover { background: #4b5263; }
@@ -27,7 +26,6 @@
         
         .info-pnl { grid-column:3/4; grid-row:2/-1; background:var(--panel); border-left:1px solid #111; padding:15px; overflow-y:auto; font-size: 13px; color: #eee; }
 
-        /* 游戏核心元素 */
         .center-zone { position:absolute; top:45%; left:50%; transform:translate(-50%, -50%); display:flex; gap:40px; align-items: center; z-index: 5; }
         
         .pile { 
@@ -39,7 +37,6 @@
         }
         .pile:hover { border-color:var(--hl); background:rgba(255,255,255,0.1); color: var(--hl); }
         
-        /* 交互区域容器：打出、使用、展示 */
         .play-zones-container {
             position:absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             display:flex; gap: 15px; z-index: 2;
@@ -61,7 +58,6 @@
             background: rgba(0,0,0,0.1);
         }
 
-        /* 新增：展示区 */
         .show-area {
             width:160px; height:120px; 
             border:2px dotted rgba(100, 200, 255, 0.5); border-radius: 10px;
@@ -96,10 +92,17 @@
             display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 1px; padding: 2px;
             overflow: hidden;
         }
+        /* 特殊区域样式：跨列，更高，更密集 */
+        .drop-zone[data-zone="special"] {
+            grid-column: 1 / -1; /* 跨两列 */
+            height: 90px; /* 增加高度 */
+            grid-template-columns: repeat(6, 1fr); /* 一行6个 */
+            gap: 2px;
+        }
+        
         .drop-zone:hover { border-color: var(--hl); background: rgba(255,255,255,0.1); }
         .drop-zone-label { position: absolute; top:0; left:0; width:100%; font-size:8px; background:rgba(0,0,0,0.6); pointer-events: none; color: white; text-align: center; z-index: 5;}
 
-        /* 卡牌样式 */
         .card { 
             width:96px; height:134px; 
             background: var(--card-bg); color:#333; 
@@ -117,7 +120,6 @@
         .card-suit-bg { position:absolute; top:45px; left:50%; transform:translateX(-50%); font-size:70px; opacity:0.08; pointer-events:none;}
         .card-desc { position:absolute; bottom:4px; left:4px; right:4px; font-size:9px; color:#555; transform:scale(0.95); transform-origin:center bottom; line-height: 1.2; }
         
-        /* 标记展示状态 */
         .card.is-visible::after { content: '👁️'; position: absolute; top: -5px; right: -5px; font-size: 16px; background: rgba(0,0,0,0.7); border-radius: 50%; padding: 2px; }
 
         .mini-card { 
@@ -128,9 +130,19 @@
             box-shadow: 1px 1px 2px rgba(0,0,0,0.5); 
             white-space: nowrap; overflow: hidden;
         }
-        .mini-card:hover { transform: scale(1.1); z-index: 10; border-color: var(--hl);}
+        /* 特殊区域的小卡更小 */
+        .drop-zone[data-zone="special"] .mini-card {
+            font-size: 8px;
+            height: 24px;
+        }
+        
+        .mini-card:hover { transform: scale(1.2); z-index: 10; border-color: var(--hl);}
         .mini-card.hidden { background:#444; color:#ccc; border-color: #666; background-image:repeating-linear-gradient(45deg, #444 0, #444 5px, #555 5px, #555 10px); }
         .mini-card.hand-card-back { background: #555; border: 1px solid #777; }
+        
+        /* 可见性状态样式 */
+        .mini-card.vis-self { border: 2px solid #3498db; }
+        .mini-card.vis-all { border: 2px solid #2ecc71; }
         
         .modal { position:fixed; top:0; left:0; w:100%; h:100%; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:999; display:flex; align-items:center; justify-content:center; flex-direction:column; backdrop-filter: blur(5px); }
         .setting-row { margin:15px; color:#fff; display:flex; gap:15px; align-items:center; font-size: 16px;}
@@ -265,7 +277,7 @@
 
 <!-- 登录 -->
 <div id="login-layer" class="modal">
-    <h1 style="color: var(--hl);">🗡️ SZS Pro Max</h1>
+    <h1 style="color: var(--hl);">🗡️ SGS Pro Max</h1>
     <div style="background: #333; padding: 30px; border-radius: 10px;">
         <input id="u-name" placeholder="请输入昵称" style="padding:10px; width: 200px;"><br><br>
         <input id="r-id" placeholder="房间号" value="101" style="padding:10px;"><br><br>
@@ -398,7 +410,6 @@
 
     function renderTable() {
         const table = document.getElementById('table');
-        // 保留 play-zones-container 和 center-zone，清除其他
         [...table.querySelectorAll('.seat')].forEach(c => c.remove());
 
         if(state.deckCount !== undefined) document.getElementById('deck-num').innerText = state.deckCount;
@@ -413,7 +424,6 @@
         
         const w = table.clientWidth || 800; 
         const h = table.clientHeight || 600;
-        // 布局调整：增大半径，防止重叠
         const rx = w/2 - 120, ry = h/2 - 120;
         
         others.forEach((pid, i) => {
@@ -453,7 +463,6 @@
                 <div class="zone-container">
                     <div class="drop-zone" data-zone="hand" title="手牌区 (拖拽互动)">
                         <span class="drop-zone-label">👋手牌(${p.handCount})</span>
-                        <!-- 显示实体盲牌 -->
                         <div style="width:100%; display:grid; grid-template-columns: repeat(3, 1fr); gap:1px; overflow:hidden;">
                             ${renderMiniCards(p.hand, pid, 'hand')}
                         </div>
@@ -523,10 +532,14 @@
         handBox.innerHTML = '';
         me.hand.forEach(c => {
             const el = createCardEl(c);
-            if(c.isVisible) el.classList.add('is-visible'); // 添加CSS类
+            if(c.isVisible) el.classList.add('is-visible'); 
             el.draggable = true;
             el.ondragstart = (e) => dragStart(e, 'hand', myId, c.uuid);
             el.oncontextmenu = (e) => showMenu(e, 'my_hand', {card:c});
+            
+            // 左键点击支持：特殊区直接切换状态，手牌保持原样
+            // 特殊区通过 bindMiniCardEvents 绑定 click
+            
             handBox.appendChild(el);
         });
 
@@ -678,7 +691,6 @@
         
         let html = '';
         if(type === 'my_hand') {
-            // 更新后的手牌菜单：仅保留展示/暗置和印卡
             const label = data.card.isVisible ? '🙈 暗置此牌' : '👁️ 展示此牌';
             html += item(label, () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:myId, uuid:data.card.uuid}}));
             html += sep();
@@ -687,6 +699,7 @@
             html += item('📥 摸一张', () => drawCard());
             html += item('⚡ 判定 (翻开)', () => socket.emit('game_action', {roomId, type:'judge_top'}));
             html += item('🔙 摸底牌', () => socket.emit('game_action', {roomId, type:'draw_bottom', logMsg:'摸了一张底牌'}));
+            html += item('📥 暗置一张到旁侧', () => socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:'deck', toPid:myId, toZone:'special'}, logMsg:'从牌堆暗置了一张牌到旁侧'}));
         } else if(type === 'player') {
              html += item('✋ 操作区域/查看手牌', () => openZoneViewer(data.pid));
              if (state.players[myId].isHost && data.pid !== myId) {
@@ -696,9 +709,9 @@
              // 允许翻开他人手牌或旁侧牌
              if(data.zone === 'hand' || data.zone === 'special') {
                 const card = getCard(data.card.uuid); // Try to get local info if possible
-                const isVis = card.isVisible || (data.card.type !== 'back' && data.card.name !== '?');
-                const label = isVis ? '🙈 盖上' : '👁️ 翻开';
-                html += item(label, () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:data.pid, uuid:data.card.uuid}}));
+                
+                // 3 state toggle visual feedback in menu? No need, just action.
+                html += item('🔄 切换可见性', () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:data.pid, uuid:data.card.uuid}}));
             }
             html += item('🖐️ 拿走', () => socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:data.pid, fromZone:data.zone, cardUuid:data.card.uuid, toPid:myId, toZone:'hand'}, logMsg:`拿走了【${data.card.name||'一张牌'}】`}));
             html += item('🗑️ 弃置', () => socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:data.pid, fromZone:data.zone, cardUuid:data.card.uuid, toPid:'discard'}, logMsg:`弃置了【${data.card.name||'一张牌'}】`}));
@@ -767,26 +780,28 @@
         if(!cards) return '';
         return cards.map(c => {
             const isHidden = zone==='special' && !c.isVisible && pid !== myId;
+            // VisType class
+            const visClass = c.visType === 1 ? 'vis-self' : (c.visType === 2 ? 'vis-all' : '');
+            
             // 他人手牌实体化
             if (zone === 'hand' && pid !== myId) {
-                // 如果服务器发来的是明牌（isVisible=true），则显示名字
                 if (c.type !== 'back') {
-                     return `<div class="mini-card" data-uuid="${c.uuid}" data-zone="${zone}" title="${c.name}">${c.name[0]}</div>`;
+                     return `<div class="mini-card ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="${c.name}">${c.name[0]}</div>`;
                 }
-                return `<div class="mini-card hand-card-back" data-uuid="${c.uuid}" data-zone="${zone}" title="手牌"></div>`;
+                return `<div class="mini-card hand-card-back ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="手牌"></div>`;
             }
             const displayName = c.name ? c.name : '?';
-            return `<div class="mini-card ${isHidden?'hidden':''}" data-uuid="${c.uuid}" data-zone="${zone}" title="${c.name || ''}">${isHidden?'?':displayName}</div>`;
+            return `<div class="mini-card ${isHidden?'hidden':''} ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="${c.name || ''}">${isHidden?'?':displayName}</div>`;
         }).join('');
     }
     function bindMiniCardEvents(parent, pid) {
         parent.querySelectorAll('.mini-card').forEach(el => {
             el.draggable = true;
             el.ondragstart = (e) => dragStart(e, el.dataset.zone, pid, el.dataset.uuid);
-            // 尝试获取本地卡牌信息，如果没有则用 dataset
-            let card = getCard(el.dataset.uuid);
-            if (!card.uuid) card = { uuid: el.dataset.uuid, type: 'back' }; // Fallback
+            const card = getCard(el.dataset.uuid);
             el.oncontextmenu = (e) => showMenu(e, 'zone_card', {card, zone:el.dataset.zone, pid});
+            // 左键点击切换可见性
+            el.onclick = () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:pid, uuid:el.dataset.uuid}});
         });
     }
     function getCard(uuid) {
@@ -881,7 +896,6 @@
         }
     }
     
-    // 状态切换
     function toggleStatus(prop) {
         const current = state.players[myId][prop];
         const label = prop === 'isFlipped' ? '翻面' : '连环';
