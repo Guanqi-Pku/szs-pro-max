@@ -127,7 +127,6 @@
         
         .card.is-visible::after { content: '👁️'; position: absolute; top: -5px; right: -5px; font-size: 16px; background: rgba(0,0,0,0.7); border-radius: 50%; padding: 2px; }
         
-        /* 选将时的角标样式 */
         .card-pick-badge {
             position: absolute; top: 0; right: 0; 
             background: var(--danger); color: white;
@@ -196,7 +195,6 @@
         }
         .seat:hover .skill-pop { display:block; }
 
-        /* 背景控制面板 */
         #bg-ctrl-panel {
             position: absolute; top: 50px; right: 260px; 
             background: #333; padding: 10px; border-radius: 5px; border: 1px solid #555;
@@ -215,7 +213,6 @@
             <button onclick="socket.emit('game_action', {roomId, type:'random_gen', data:{range:6}})">🎲 投骰子</button>
         </div>
         
-        <!-- 背景控制面板 -->
         <div id="bg-ctrl-panel">
             <label>上传图片:</label>
             <input type="file" id="bg-file-input" accept="image/*" onchange="handleBgUpload()" style="font-size: 10px; width: 180px;">
@@ -353,10 +350,17 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
+    // --- 自动填充 ID ---
+    window.onload = () => {
+        const savedName = localStorage.getItem('szs_name');
+        const savedRoom = localStorage.getItem('szs_room');
+        if(savedName) document.getElementById('u-name').value = savedName;
+        if(savedRoom) document.getElementById('r-id').value = savedRoom;
+    };
+
     const socket = io();
     let roomId, myId, state, dragData = null;
-    // --- 修改：选将数组 ---
-    let selectedHeroes = []; // 存储英雄ID数组，顺序即为选择顺序
+    let selectedHeroes = [];
     let targetMode = null; 
     let selectedTargets = []; 
     let viewingPid = null; 
@@ -364,6 +368,11 @@
     function join() {
         const name = document.getElementById('u-name').value || 'User';
         roomId = document.getElementById('r-id').value;
+        
+        // 保存到 localStorage
+        localStorage.setItem('szs_name', name);
+        localStorage.setItem('szs_room', roomId);
+
         socket.emit('join', { name, roomId });
         document.getElementById('login-layer').style.display='none';
     }
@@ -400,7 +409,6 @@
         setTimeout(() => t.style.display = 'none', 3000);
     });
 
-    // --- 背景图片逻辑 ---
     function handleBgUpload() {
         const file = document.getElementById('bg-file-input').files[0];
         if (file) {
@@ -450,6 +458,8 @@
                 </div>
                 ${me.backupHeroes.length > 0 ? `<div style="margin-top:10px; border-top:1px solid #555; padding-top:10px;">备用: ${me.backupHeroes.map(h=>h.name).join(', ')}</div>` : ''}
             `;
+        } else if (me.role === '观众') {
+             html += '<p style="color:#888; text-align:center;">(观众模式)</p>';
         } else {
             html += '<p style="color:#888; text-align:center;">(等待选将...)</p>';
         }
@@ -496,8 +506,8 @@
                 el.style.transform = 'scale(1.05)';
             }
             
-            const heroName = p.hero ? p.hero.name : '未选';
-            const skills = p.hero ? p.hero.skills : '暂无技能';
+            const heroName = p.hero ? p.hero.name : (p.role === '观众' ? '观众' : '未选');
+            const skills = p.hero ? p.hero.skills : '';
             
             el.innerHTML = `
                 <div class="seat-name">
@@ -505,7 +515,7 @@
                     <small style="background:#444; padding:0 4px; border-radius:3px;">${p.isRoleShown?p.role:'???'}</small>
                 </div>
                 <div style="font-weight:bold; color:orange; margin-bottom: 2px;">${heroName}</div>
-                <div class="skill-pop"><strong>技能：</strong><br>${skills}</div>
+                ${skills ? `<div class="skill-pop"><strong>技能：</strong><br>${skills}</div>` : ''}
                 <div style="margin: 2px 0;">HP: <span style="font-weight:bold; color:${getHpColor(p.hp, p.maxHp)}">${p.hp}/${p.maxHp}</span></div>
                 
                 <div class="zone-container">
@@ -660,7 +670,6 @@
     }
     function dragOver(e) { e.preventDefault(); }
     
-    // --- 区域拖放逻辑 ---
     function dropTable(e) { e.preventDefault(); e.stopPropagation(); }
 
     function dropPlayArea(e) {
@@ -688,7 +697,6 @@
         socket.emit('game_action', {roomId, type:'chat', logMsg:`展示了手牌：【${card.name}】 ${card.suit} ${card.rank}`});
     }
     
-    // 将牌拖回牌堆顶
     function dropDeck(e) {
         e.preventDefault(); e.stopPropagation();
         if(!dragData) return;
@@ -719,7 +727,6 @@
     }
     function dropMyArea(e) { e.preventDefault(); e.stopPropagation(); dropZone(e, myId, 'hand'); }
 
-    // --- 菜单 ---
     document.oncontextmenu = (e) => { e.preventDefault(); document.getElementById('ctx-menu').style.display='none'; };
     document.onclick = () => { document.getElementById('ctx-menu').style.display='none'; }; 
 
@@ -752,7 +759,7 @@
              }
         } else if(type === 'zone_card') {
              if(data.zone === 'hand' || data.zone === 'special') {
-                const card = getCard(data.card.uuid); // Try to get local info if possible
+                const card = getCard(data.card.uuid); 
                 html += item('🔄 切换可见性', () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:data.pid, uuid:data.card.uuid}}));
             }
             html += item('🖐️ 拿走', () => socket.emit('game_action', {roomId, type:'move_card', data:{fromPid:data.pid, fromZone:data.zone, cardUuid:data.card.uuid, toPid:myId, toZone:'hand'}, logMsg:`拿走了【${data.card.name||'一张牌'}】`}));
@@ -817,7 +824,6 @@
         renderMyArea();
     }
 
-    // --- 通用与渲染辅助 ---
     function renderMiniCards(cards, pid, zone) {
         if(!cards) return '';
         const sMap = {spade:'♠', heart:'♥', club:'♣', diamond:'♦'};
@@ -916,13 +922,11 @@
         document.getElementById('set-layer').style.display='none';
     }
 
-    // --- 修改：显示选将逻辑 ---
     function showPick() {
         const p = state.players[myId];
         if(!p.heroPool) return;
         document.getElementById('pick-layer').style.display='flex';
         
-        // 显示身份
         const roleSpan = document.getElementById('pick-role-display');
         roleSpan.innerText = p.role;
         roleSpan.style.fontWeight = 'bold';
@@ -936,9 +940,8 @@
             el.className = 'card'; 
             el.style.width='140px'; el.style.height='200px'; 
             el.style.background='white'; el.style.color='black';
-            el.style.position = 'relative'; // 为了定位角标
+            el.style.position = 'relative';
 
-            // 检查是否被选中及其顺序
             const idx = selectedHeroes.indexOf(h.id);
             const isSelected = idx !== -1;
             
@@ -946,10 +949,8 @@
                 el.style.border = '2px solid var(--danger)';
                 el.style.background = '#fff0f0';
                 
-                // 添加角标显示顺序
                 const badge = document.createElement('div');
                 badge.className = 'card-pick-badge';
-                // 1 -> 首发, 2 -> 备选1, 3 -> 备选2 ...
                 if (idx === 0) badge.innerText = "首发";
                 else badge.innerText = `备选${idx}`;
                 el.appendChild(badge);
@@ -965,15 +966,11 @@
             `;
             
             el.onclick = () => {
-                // 顺序选择逻辑
                 if(isSelected) {
-                    // 如果已选，则取消选择
                     selectedHeroes.splice(idx, 1);
                 } else {
-                    // 如果未选，添加到末尾
                     selectedHeroes.push(h.id);
                 }
-                // 重新渲染选将池
                 showPick();
             }
             pool.appendChild(el);
@@ -981,7 +978,6 @@
     }
 
     function confirmHero() {
-        // selectedHeroes 现在的顺序就是玩家点击的顺序
         socket.emit('game_ctrl', {roomId, type:'confirm_hero', data:{heroIds:selectedHeroes}});
         document.getElementById('pick-layer').style.display='none';
     }
