@@ -126,7 +126,19 @@ io.on('connection', (socket) => {
             case 'confirm_hero':
                 const p = room.players[socket.id];
                 if(!p || room.status !== 'picking') return;
-                const selected = (p.heroPool || []).filter(h => data.heroIds.includes(h.id));
+                
+                // --- 修改：按照客户端提交的顺序处理选将 ---
+                // data.heroIds 是一个有序数组，第一个为主将
+                const poolMap = new Map((p.heroPool || []).map(h => [h.id, h]));
+                const selected = [];
+                
+                if (data.heroIds && Array.isArray(data.heroIds)) {
+                    data.heroIds.forEach(id => {
+                        const h = poolMap.get(id);
+                        if (h) selected.push(h);
+                    });
+                }
+
                 if(selected.length > 0) {
                     p.hero = selected[0];
                     p.backupHeroes = selected.slice(1);
@@ -365,7 +377,7 @@ function handleMoveCard(room, { fromPid, fromZone, cardUuid, toPid, toZone }) {
     else if(toPid === 'discard') { room.discardPile.push(card); }
     else if(room.players[toPid]) {
         const p = room.players[toPid];
-        // 移动重置可见性，除非是移入 special 且不希望重置(这里默认重置，由玩家手动调整)
+        // 移动重置可见性
         delete card.visType; 
         
         if(toZone === 'hand') p.hand.push(card);
@@ -417,10 +429,6 @@ function broadcast(roomId) {
                                 let show = false;
                                 if (v === 2) show = true;
                                 if (v === 1 && isOwner) show = true;
-                                // 装备和判定区通常默认是明置的，但在我们的逻辑里，move进去默认visType=undefined(0)
-                                // 为了保持旧习惯：装备/判定默认所有人可见?
-                                // 不，新逻辑下所有区域默认暗置。
-                                // 修正：装备和判定区通常必须可见。
                                 if (z === 'equip' || z === 'judge') show = true; 
                                 
                                 if (show) return c;
