@@ -29,7 +29,7 @@ const uuid = () => Math.random().toString(36).substr(2, 9);
 io.on('connection', (socket) => {
     console.log('🔗 连接:', socket.id);
 
-    // 1. 加入房间
+    // 1. 加入房间 (含断线重连逻辑)
     socket.on('join', ({ name, roomId }) => {
         socket.join(roomId);
         if (!rooms[roomId]) {
@@ -51,16 +51,51 @@ io.on('connection', (socket) => {
             };
         }
         const room = rooms[roomId];
-        let isSpectator = room.status !== 'waiting' && !room.players[socket.id];
 
-        if (!isSpectator && !room.players[socket.id]) {
+        // --- 核心修改：检查是否为重连 ---
+        let existingPid = null;
+        Object.keys(room.players).forEach(pid => {
+            if (room.players[pid].name === name) {
+                existingPid = pid;
+            }
+        });
+
+        if (existingPid) {
+            // [情景2: 断线重连]
+            const p = room.players[existingPid];
+            
+            // 1. 更新 Socket ID 映射
+            if (existingPid !== socket.id) {
+                room.players[socket.id] = p; // 将旧数据移到新Socket名下
+                delete room.players[existingPid]; // 删除旧Socket引用的key
+            }
+            
+            // 2. 更新玩家对象内部ID
+            p.id = socket.id;
+            
+            // 3. 更新座位表
+            const seatIdx = room.seatOrder.indexOf(existingPid);
+            if (seatIdx !== -1) {
+                room.seatOrder[seatIdx] = socket.id;
+            }
+
+            addLog(room, '系统', `用户 <span style="color:#00C851">${name}</span> 断线重连成功`);
+        } else {
+            // [情景: 新用户加入]
+            
+            // 如果已经在游戏中 (playing/picking)，则视为[情景1: 中途加入/观众]
+            // 如果是 waiting，则是正常加入
+            const isLateJoin = room.status !== 'waiting';
+
             room.players[socket.id] = {
                 id: socket.id,
                 name: name,
-                isHost: room.seatOrder.length === 0,
+                isHost: room.seatOrder.length === 0, // 只有房间第一个人是房主
                 hero: null, backupHeroes: [],
                 hp: 0, maxHp: 0,
-                role: '未定', isRoleShown: false,
+                // 如果是中途加入，身份设为观众，否则未定
+                role: isLateJoin ? '观众' : '未定', 
+                isRoleShown: isLateJoin, // 观众身份默认公开
                 isFlipped: false, 
                 isChained: false, 
                 hand: [],
@@ -68,9 +103,16 @@ io.on('connection', (socket) => {
                 marks: [], 
                 isDead: false
             };
+            
             room.seatOrder.push(socket.id);
-            addLog(room, '系统', `用户 <span style="color:#ffd700">${name}</span> 加入了房间`);
+            
+            if (isLateJoin) {
+                addLog(room, '系统', `用户 <span style="color:#aaa">${name}</span> 以观众身份加入观战`);
+            } else {
+                addLog(room, '系统', `用户 <span style="color:#ffd700">${name}</span> 加入了房间`);
+            }
         }
+
         broadcast(roomId);
     });
 
@@ -83,8 +125,13 @@ io.on('connection', (socket) => {
         switch(type) {
             case 'start_pick': 
                 if(room.status !== 'waiting') return;
-                room.seatOrder = room.seatOrder.filter(pid => room.players[pid]);
-                if (room.seatOrder.length === 0) return;
+                
+                // 只有当前在房间里的有效玩家参与选将
+                const validPids = room.seatOrder.filter(pid => room.players[pid]);
+                if (validPids.length === 0) return;
+
+                // 重置座位表，剔除无效ID（虽然disconnect不删，但保险起见）
+                room.seatOrder = validPids;
 
                 room.settings.roleConfig = data.roleConfig;
                 room.settings.pickCount = parseInt(data.pickCount) || 1;
@@ -96,6 +143,7 @@ io.on('connection', (socket) => {
                 for(let i=0; i<cfg.zhong; i++) roles.push('忠臣');
                 for(let i=0; i<cfg.fan; i++) roles.push('反贼');
                 for(let i=0; i<cfg.nei; i++) roles.push('内奸');
+                // 补齐反贼
                 while(roles.length < room.seatOrder.length) roles.push('反贼'); 
                 const shuffledRoles = shuffle(roles);
                 
@@ -127,8 +175,6 @@ io.on('connection', (socket) => {
                 const p = room.players[socket.id];
                 if(!p || room.status !== 'picking') return;
                 
-                // --- 修改：按照客户端提交的顺序处理选将 ---
-                // data.heroIds 是一个有序数组，第一个为主将
                 const poolMap = new Map((p.heroPool || []).map(h => [h.id, h]));
                 const selected = [];
                 
@@ -169,6 +215,7 @@ io.on('connection', (socket) => {
                 room.status = 'waiting';
                 room.deck = shuffle([...GLOBAL_DECK]).map(c => ({...c, uuid: uuid()}));
                 room.discardPile = [];
+                // 重置时，保留所有座位上的玩家，但重置状态
                 room.seatOrder.forEach(pid => {
                     const pl = room.players[pid];
                     if(pl) {
@@ -179,8 +226,10 @@ io.on('connection', (socket) => {
                         pl.isDead = false; 
                         pl.isFlipped = false;
                         pl.isChained = false;
-                        pl.role = '未定'; pl.isRoleShown = false; 
+                        pl.role = '未定'; 
+                        pl.isRoleShown = false; 
                         pl.marks = [];
+                        pl.backupHeroes = [];
                         delete pl.heroPool;
                     }
                 });
@@ -231,7 +280,6 @@ io.on('connection', (socket) => {
                 }
                 break;
             
-            // --- 修改：三态切换逻辑 ---
             case 'toggle_card_visible':
                 if(room.players[data.targetPid]) {
                     const targetP = room.players[data.targetPid];
@@ -320,21 +368,29 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
+        // --- 核心修改：断线不立即删除数据，只打日志 ---
         let rId = null;
         for(const rid in rooms) { if(rooms[rid].players[socket.id]) { rId = rid; break; } }
         if (rId) {
             const room = rooms[rId];
-            delete room.players[socket.id];
-            room.seatOrder = room.seatOrder.filter(pid => pid !== socket.id);
-            if (room.seatOrder.length === 0) delete rooms[rId];
-            else broadcast(rId);
+            const p = room.players[socket.id];
+            if (p) {
+                console.log(`用户 ${p.name} (${socket.id}) 断开连接，保留数据等待重连。`);
+                // 可选：广播某人断线
+                // addLog(room, '系统', `用户 ${p.name} 暂时离开了`);
+                // broadcast(rId);
+            }
+            
+            // 只有当房间空太久才销毁(这里为了简单暂时不销毁，或者依靠服务器重启清理)
         }
     });
 });
 
 function checkGameStart(room) {
-    const validPlayers = room.seatOrder.filter(pid => room.players[pid]);
-    if(validPlayers.length > 0 && validPlayers.every(pid => room.players[pid].hero)) {
+    // 检查所有非观众且有座位的玩家是否都选了将
+    const seatPlayers = room.seatOrder.map(pid => room.players[pid]).filter(p => p && p.role !== '观众');
+    
+    if(seatPlayers.length > 0 && seatPlayers.every(p => p.hero)) {
         room.status = 'playing';
         addLog(room, '系统', '⚔️ 所有玩家选将完毕，游戏开始！');
     }
@@ -343,7 +399,6 @@ function checkGameStart(room) {
 function handleMoveCard(room, { fromPid, fromZone, cardUuid, toPid, toZone }) {
     let card = null, source = null;
     
-    // --- 修改：牌堆自动洗牌逻辑 ---
     if(fromPid === 'deck') { 
         if (room.deck.length === 0) {
             if (room.discardPile.length > 0) {
@@ -377,9 +432,7 @@ function handleMoveCard(room, { fromPid, fromZone, cardUuid, toPid, toZone }) {
     else if(toPid === 'discard') { room.discardPile.push(card); }
     else if(room.players[toPid]) {
         const p = room.players[toPid];
-        // 移动重置可见性
         delete card.visType; 
-        
         if(toZone === 'hand') p.hand.push(card);
         else if (p.zones[toZone]) p.zones[toZone].push(card);
     }
@@ -406,12 +459,8 @@ function broadcast(roomId) {
             delete clean.history;
             Object.values(clean.players).forEach(p => {
                 const isOwner = (p.id === sid);
-                
-                // --- 修改：基于 visType 的广播逻辑 ---
-                // 遍历所有区域进行脱敏
                 ['hand', 'zones'].forEach(prop => {
                     if (prop === 'hand') {
-                        // 手牌脱敏：如果不是自己，且 visType!=2(明)，则隐藏
                         if (!isOwner) {
                             p.hand = p.hand.map(c => {
                                 const v = c.visType || 0;
@@ -421,16 +470,13 @@ function broadcast(roomId) {
                             p.handCount = p.hand.length;
                         }
                     } else {
-                        // 区域脱敏
                         ['equip', 'judge', 'special'].forEach(z => {
                             p.zones[z] = p.zones[z].map(c => {
                                 const v = c.visType || 0;
-                                // 0: 暗(仅卡背), 1: 己(仅自己看), 2: 明(全看)
                                 let show = false;
                                 if (v === 2) show = true;
                                 if (v === 1 && isOwner) show = true;
                                 if (z === 'equip' || z === 'judge') show = true; 
-                                
                                 if (show) return c;
                                 return { uuid: c.uuid, type: 'back', name: '?', visType: v };
                             });
