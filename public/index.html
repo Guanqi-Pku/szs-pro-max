@@ -20,7 +20,13 @@
         #log-box { flex:1; overflow-y:auto; padding:10px; font-size:12px; line-height:1.5; font-family: 'Consolas', monospace; }
         .log-entry { margin-bottom:5px; border-bottom:1px solid #333; padding-bottom:2px; color: #dcdfe4; }
         
-        #table { grid-column:2/3; grid-row:2/3; position:relative; background: radial-gradient(circle at center, #2e8b57, #1e6f42); margin:0; box-shadow:inset 0 0 80px rgba(0,0,0,0.8); overflow: hidden; }
+        #table { 
+            grid-column:2/3; grid-row:2/3; position:relative; 
+            background: radial-gradient(circle at center, #2e8b57, #1e6f42); 
+            background-size: cover;
+            background-position: center;
+            margin:0; box-shadow:inset 0 0 80px rgba(0,0,0,0.8); overflow: hidden; 
+        }
         
         #my-area { grid-column:2/3; grid-row:3/4; background:var(--panel); padding:10px; border-top:2px solid var(--hl); position:relative; display:flex; flex-direction:column; z-index:20; box-shadow: 0 -5px 20px rgba(0,0,0,0.5); }
         
@@ -120,6 +126,15 @@
         .card-desc { position:absolute; bottom:4px; left:4px; right:4px; font-size:9px; color:#555; transform:scale(0.95); transform-origin:center bottom; line-height: 1.2; }
         
         .card.is-visible::after { content: '👁️'; position: absolute; top: -5px; right: -5px; font-size: 16px; background: rgba(0,0,0,0.7); border-radius: 50%; padding: 2px; }
+        
+        /* 选将时的角标样式 */
+        .card-pick-badge {
+            position: absolute; top: 0; right: 0; 
+            background: var(--danger); color: white;
+            font-size: 14px; font-weight: bold; padding: 2px 6px;
+            border-bottom-left-radius: 6px; border-top-right-radius: 6px;
+            z-index: 20; box-shadow: -2px 2px 4px rgba(0,0,0,0.3);
+        }
 
         .mini-card { 
             width: 100%; height: 32px; 
@@ -180,16 +195,35 @@
             font-size:12px; pointer-events:none; line-height: 1.4; border: 1px solid #ccc;
         }
         .seat:hover .skill-pop { display:block; }
+
+        /* 背景控制面板 */
+        #bg-ctrl-panel {
+            position: absolute; top: 50px; right: 260px; 
+            background: #333; padding: 10px; border-radius: 5px; border: 1px solid #555;
+            display: none; flex-direction: column; gap: 8px; z-index: 100; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        #bg-ctrl-panel label { font-size: 12px; color: #ccc; }
     </style>
 </head>
 <body>
 
 <div id="app">
     <div class="top-bar">
-        <div>
+        <div style="display:flex; gap:5px;">
             <button onclick="changeTheme()">🎨 换肤</button>
+            <button onclick="document.getElementById('bg-ctrl-panel').style.display = document.getElementById('bg-ctrl-panel').style.display==='flex'?'none':'flex'">🖼️ 背景</button>
             <button onclick="socket.emit('game_action', {roomId, type:'random_gen', data:{range:6}})">🎲 投骰子</button>
         </div>
+        
+        <!-- 背景控制面板 -->
+        <div id="bg-ctrl-panel">
+            <label>上传图片:</label>
+            <input type="file" id="bg-file-input" accept="image/*" onchange="handleBgUpload()" style="font-size: 10px; width: 180px;">
+            <label>缩放比例: <span id="bg-scale-val">100%</span></label>
+            <input type="range" min="10" max="200" value="100" oninput="adjustBgScale(this.value)">
+            <button onclick="resetBg()" style="font-size: 10px;">❌ 重置背景</button>
+        </div>
+
         <div id="host-ctrl" style="display:none; gap:10px;">
             <button onclick="document.getElementById('set-layer').style.display='flex'">⚙️ 设置</button>
             <button onclick="socket.emit('game_ctrl', {roomId, type:'force_start'})" style="background:#28a745; border-color:#28a745;">▶ 强制开始</button>
@@ -286,7 +320,8 @@
 </div>
 
 <div id="pick-layer" class="modal" style="display:none;">
-    <h2 id="pick-title" style="color: white;">选择武将</h2>
+    <h2 id="pick-title" style="color: white; margin-bottom: 5px;">选择武将</h2>
+    <h3 style="color: var(--hl); margin-top: 0; margin-bottom: 20px;">当前身份: <span id="pick-role-display"></span></h3>
     <div id="hero-pool" style="display:flex; gap:15px; flex-wrap:wrap; justify-content:center; padding:20px; max-width: 800px; max-height: 80vh; overflow-y: auto;"></div>
     <button onclick="confirmHero()" style="padding:12px 50px; margin-top:20px; background:var(--danger); color:#fff; border:none; cursor:pointer;">确定选择</button>
 </div>
@@ -320,7 +355,8 @@
 <script>
     const socket = io();
     let roomId, myId, state, dragData = null;
-    let selectedHeroes = [];
+    // --- 修改：选将数组 ---
+    let selectedHeroes = []; // 存储英雄ID数组，顺序即为选择顺序
     let targetMode = null; 
     let selectedTargets = []; 
     let viewingPid = null; 
@@ -363,6 +399,34 @@
         t.style.display = 'flex';
         setTimeout(() => t.style.display = 'none', 3000);
     });
+
+    // --- 背景图片逻辑 ---
+    function handleBgUpload() {
+        const file = document.getElementById('bg-file-input').files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const table = document.getElementById('table');
+                table.style.backgroundImage = `url(${e.target.result})`;
+                table.style.backgroundRepeat = 'no-repeat';
+                table.style.backgroundPosition = 'center';
+            }
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    function adjustBgScale(val) {
+        document.getElementById('bg-scale-val').innerText = val + '%';
+        const table = document.getElementById('table');
+        table.style.backgroundSize = `${val}%`;
+    }
+    
+    function resetBg() {
+        const table = document.getElementById('table');
+        table.style.backgroundImage = ''; 
+        table.style.backgroundSize = 'cover';
+        document.getElementById('bg-file-input').value = '';
+    }
 
     function renderInfoPanel() {
         const box = document.getElementById('info-box');
@@ -759,13 +823,9 @@
         const sMap = {spade:'♠', heart:'♥', club:'♣', diamond:'♦'};
         
         return cards.map(c => {
-            // Determine visibility based on data presence
             const isDataHidden = c.name === '?' || !c.name; 
-            
-            // VisType class
             const visClass = c.visType === 1 ? 'vis-self' : (c.visType === 2 ? 'vis-all' : '');
             
-            // Construct Tooltip
             let titleText = '';
             if (!isDataHidden) {
                 const s = sMap[c.suit] || c.suit || '';
@@ -775,7 +835,6 @@
                 titleText = '未知牌';
             }
 
-            // 他人手牌实体化
             if (zone === 'hand' && pid !== myId) {
                 if (c.type !== 'back') {
                      return `<div class="mini-card ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="${titleText}">${c.name[0]}</div>`;
@@ -784,7 +843,6 @@
             }
             
             const displayName = isDataHidden ? '?' : c.name;
-            
             return `<div class="mini-card ${isDataHidden?'hidden':''} ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="${titleText}">${isDataHidden?'?':(displayName[0] || '?')}</div>`;
         }).join('');
     }
@@ -857,31 +915,77 @@
         socket.emit('game_ctrl', {roomId, type:'start_pick', data:config});
         document.getElementById('set-layer').style.display='none';
     }
+
+    // --- 修改：显示选将逻辑 ---
     function showPick() {
         const p = state.players[myId];
         if(!p.heroPool) return;
         document.getElementById('pick-layer').style.display='flex';
+        
+        // 显示身份
+        const roleSpan = document.getElementById('pick-role-display');
+        roleSpan.innerText = p.role;
+        roleSpan.style.fontWeight = 'bold';
+        roleSpan.style.color = p.role === '主公' ? 'red' : (p.role === '忠臣' ? 'orange' : (p.role === '反贼' ? 'green' : 'blue'));
+
         const pool = document.getElementById('hero-pool');
         pool.innerHTML = '';
+        
         p.heroPool.forEach(h => {
             const el = document.createElement('div');
-            el.className = 'card'; el.style.width='140px'; el.style.height='200px'; el.style.background='white'; el.style.color='black';
-            el.innerHTML = `
+            el.className = 'card'; 
+            el.style.width='140px'; el.style.height='200px'; 
+            el.style.background='white'; el.style.color='black';
+            el.style.position = 'relative'; // 为了定位角标
+
+            // 检查是否被选中及其顺序
+            const idx = selectedHeroes.indexOf(h.id);
+            const isSelected = idx !== -1;
+            
+            if (isSelected) {
+                el.style.border = '2px solid var(--danger)';
+                el.style.background = '#fff0f0';
+                
+                // 添加角标显示顺序
+                const badge = document.createElement('div');
+                badge.className = 'card-pick-badge';
+                // 1 -> 首发, 2 -> 备选1, 3 -> 备选2 ...
+                if (idx === 0) badge.innerText = "首发";
+                else badge.innerText = `备选${idx}`;
+                el.appendChild(badge);
+            } else {
+                el.style.border = '1px solid #ccc'; 
+                el.style.background = 'white';
+            }
+            
+            el.innerHTML += `
                 <div style="font-size:16px; font-weight:bold; padding:5px; border-bottom:1px solid #eee;">${h.name}</div>
                 <div style="padding:5px; font-size:12px; color:#555;">${h.nation} / ${h.max_hp}血</div>
                 <div style="padding:5px; font-size:11px; overflow-y:auto; height:130px; line-height:1.4;">${h.skills}</div>
             `;
+            
             el.onclick = () => {
-                if(selectedHeroes.includes(h.id)) { selectedHeroes = selectedHeroes.filter(x=>x!==h.id); el.style.border='1px solid #ccc'; el.style.background='white'; }
-                else { selectedHeroes.push(h.id); el.style.border='2px solid var(--danger)'; el.style.background='#fff0f0'; }
+                // 顺序选择逻辑
+                if(isSelected) {
+                    // 如果已选，则取消选择
+                    selectedHeroes.splice(idx, 1);
+                } else {
+                    // 如果未选，添加到末尾
+                    selectedHeroes.push(h.id);
+                }
+                // 重新渲染选将池
+                showPick();
             }
             pool.appendChild(el);
         });
     }
+
     function confirmHero() {
+        // selectedHeroes 现在的顺序就是玩家点击的顺序
         socket.emit('game_ctrl', {roomId, type:'confirm_hero', data:{heroIds:selectedHeroes}});
         document.getElementById('pick-layer').style.display='none';
     }
+
     function toggleRole() {
         const r = state.players[myId].role;
         if(confirm(`你的身份是：【${r}】。\n确定要向所有人亮明吗？`)) {
