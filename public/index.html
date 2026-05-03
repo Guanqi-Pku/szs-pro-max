@@ -117,6 +117,10 @@
             transition: transform 0.2s, box-shadow 0.2s; font-family:'KaiTi', serif; z-index: 1;
         }
         .card:hover { transform:translateY(-20px) scale(1.05); z-index:100; border-color:var(--hl); box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        .card, .mini-card, .pile, .play-area, .use-area, .show-area,
+        .drop-zone, #my-area, #table, #discard-zone {
+            touch-action: none;
+        }
         .card.red { color:#b71c1c; } .card.black { color:#212121; }
         .card-back { background: repeating-linear-gradient(45deg, #444, #444 10px, #555 10px, #555 20px); border: 2px solid #777; display: flex; justify-content: center; align-items: center; color: #aaa; font-weight: bold; font-size: 24px; }
         
@@ -201,6 +205,14 @@
             display: none; flex-direction: column; gap: 8px; z-index: 100; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
         }
         #bg-ctrl-panel label { font-size: 12px; color: #ccc; }
+        .touch-drag-ghost {
+            position: fixed !important; pointer-events: none !important;
+            z-index: 99999 !important; opacity: 0.9 !important;
+            transform: rotate(2deg) scale(1.08) !important;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.6) !important;
+            transition: none !important;
+        }
+        .card.touch-dragging, .mini-card.touch-dragging { opacity: 0.35; }
     </style>
 </head>
 <body>
@@ -360,10 +372,12 @@
 
     const socket = io();
     let roomId, myId, state, dragData = null;
+    let touchDragData = null;
     let selectedHeroes = [];
     let targetMode = null; 
     let selectedTargets = []; 
-    let viewingPid = null; 
+    let viewingPid = null;
+    initTouchEvents();
 
     function join() {
         const name = document.getElementById('u-name').value || 'User';
@@ -490,7 +504,7 @@
 
             const el = document.createElement('div');
             el.className = `seat ${p.isDead?'dead':''} ${p.isFlipped?'flipped':''} ${p.isChained?'chained':''}`;
-            
+            el.dataset.pid = pid;
             const step = Math.PI / (others.length + 1);
             const angle = Math.PI - step * (i + 1);
             
@@ -590,9 +604,12 @@
         handBox.innerHTML = '';
         me.hand.forEach(c => {
             const el = createCardEl(c);
-            if(c.isVisible) el.classList.add('is-visible'); 
+            if(c.isVisible) el.classList.add('is-visible');
             el.draggable = true;
             el.ondragstart = (e) => dragStart(e, 'hand', myId, c.uuid);
+            el.dataset.zone = 'hand';
+            el.dataset.pid = myId;
+            el.addEventListener('touchstart', onTouchStart, { passive: false });
             el.oncontextmenu = (e) => showMenu(e, 'my_hand', {card:c});
             
             handBox.appendChild(el);
@@ -646,13 +663,17 @@
             el.innerHTML = '';
             cards.forEach(c => {
                 let cardEl;
-                if(c.type === 'back' && !c.suit) { 
+                if(c.type === 'back' && !c.suit) {
                      cardEl = document.createElement('div'); cardEl.className = 'card card-back'; cardEl.innerText = '?';
+                     cardEl.dataset.uuid = c.uuid || '';
                 } else {
                      cardEl = createCardEl(c);
                 }
                 cardEl.draggable = true;
                 cardEl.ondragstart = (e) => dragStart(e, zone, data.targetPid, c.uuid);
+                cardEl.dataset.zone = zone;
+                cardEl.dataset.pid = data.targetPid;
+                cardEl.addEventListener('touchstart', onTouchStart, { passive: false });
                 el.appendChild(cardEl);
             });
         };
@@ -669,7 +690,123 @@
         e.dataTransfer.setData('text/plain', uuid || 'blind');
     }
     function dragOver(e) { e.preventDefault(); }
-    
+
+    function getTouchPos(e) {
+        const touch = e.touches[0] || e.changedTouches[0];
+        return touch ? { clientX: touch.clientX, clientY: touch.clientY } : null;
+    }
+    function createDragGhost(sourceEl, touch) {
+        const ghost = sourceEl.cloneNode(true);
+        ghost.classList.add('touch-drag-ghost');
+        const rect = sourceEl.getBoundingClientRect();
+        const offsetX = touch.clientX - rect.left;
+        const offsetY = touch.clientY - rect.top;
+        ghost.style.position = 'fixed';
+        ghost.style.left = (touch.clientX - offsetX) + 'px';
+        ghost.style.top = (touch.clientY - offsetY) + 'px';
+        ghost.style.width = rect.width + 'px';
+        ghost.style.height = rect.height + 'px';
+        ghost.style.margin = '0';
+        document.body.appendChild(ghost);
+        return { ghost, offsetX, offsetY };
+    }
+    function moveDragGhost(touch) {
+        if (!touchDragData || !touchDragData.ghost) return;
+        touchDragData.ghost.style.left = (touch.clientX - touchDragData.offsetX) + 'px';
+        touchDragData.ghost.style.top = (touch.clientY - touchDragData.offsetY) + 'px';
+    }
+    function removeDragGhost() {
+        if (touchDragData) {
+            if (touchDragData.ghost && touchDragData.ghost.parentNode) {
+                document.body.removeChild(touchDragData.ghost);
+            }
+            if (touchDragData.element) {
+                touchDragData.element.classList.remove('touch-dragging');
+            }
+            touchDragData = null;
+        }
+    }
+    function findDropTarget(clientX, clientY) {
+        const el = document.elementFromPoint(clientX, clientY);
+        if (!el) return null;
+        var dropZone = el.closest('.drop-zone');
+        if (dropZone && dropZone.dataset.zone) {
+            var seat = dropZone.closest('.seat');
+            var pid = seat ? seat.dataset.pid : null;
+            if (!pid && dropZone.closest('#my-zones')) pid = myId;
+            if (pid) return { type: 'zone', pid: pid, zone: dropZone.dataset.zone };
+        }
+        if (el.closest('.play-area')) return { type: 'playArea' };
+        if (el.closest('.use-area')) return { type: 'useArea' };
+        if (el.closest('.show-area')) return { type: 'showArea' };
+        if (el.closest('#discard-zone')) return { type: 'discard' };
+        var pile = el.closest('.pile');
+        if (pile && pile.id !== 'discard-zone') return { type: 'deck' };
+        if (el.closest('#my-area')) return { type: 'myArea' };
+        return { type: 'table' };
+    }
+    function executeTouchDrop(target) {
+        if (!dragData || !target) return;
+        var mockE = { preventDefault: function(){}, stopPropagation: function(){} };
+        switch(target.type) {
+            case 'playArea': dropPlayArea(mockE); break;
+            case 'useArea': dropUseArea(mockE); break;
+            case 'showArea': dropShowArea(mockE); break;
+            case 'deck': dropDeck(mockE); break;
+            case 'discard': dropDiscard(mockE); break;
+            case 'zone': dropZone(mockE, target.pid, target.zone); break;
+            case 'myArea': dropMyArea(mockE); break;
+            case 'table': dropTable(mockE); break;
+        }
+    }
+    function onTouchStart(e) {
+        if (touchDragData) return;
+        e.preventDefault();
+        var touch = getTouchPos(e);
+        if (!touch) return;
+        var sourceEl = e.target.closest('[data-uuid]');
+        if (!sourceEl) return;
+        var zone = sourceEl.dataset.zone;
+        var pid = sourceEl.dataset.pid;
+        var uuid = sourceEl.dataset.uuid;
+        if (!zone || !pid || !uuid) return;
+        dragData = { zone: zone, pid: pid, uuid: uuid };
+        var result = createDragGhost(sourceEl, touch);
+        touchDragData = {
+            element: sourceEl, ghost: result.ghost,
+            offsetX: result.offsetX, offsetY: result.offsetY,
+            zone: zone, pid: pid, uuid: uuid
+        };
+        sourceEl.classList.add('touch-dragging');
+    }
+    function onTouchMove(e) {
+        if (!touchDragData) return;
+        e.preventDefault();
+        var touch = getTouchPos(e);
+        if (touch) moveDragGhost(touch);
+    }
+    function onTouchEnd(e) {
+        if (!touchDragData) return;
+        e.preventDefault();
+        var touch = e.changedTouches[0];
+        if (!touch) { removeDragGhost(); return; }
+        var target = findDropTarget(touch.clientX, touch.clientY);
+        removeDragGhost();
+        if (target) executeTouchDrop(target);
+        dragData = null;
+    }
+    function onTouchCancel(e) {
+        removeDragGhost();
+        dragData = null;
+    }
+    function initTouchEvents() {
+        if (window._touchInitDone) return;
+        window._touchInitDone = true;
+        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        document.addEventListener('touchend', onTouchEnd, { passive: false });
+        document.addEventListener('touchcancel', onTouchCancel, { passive: false });
+    }
+
     function dropTable(e) { e.preventDefault(); e.stopPropagation(); }
 
     function dropPlayArea(e) {
@@ -843,19 +980,21 @@
 
             if (zone === 'hand' && pid !== myId) {
                 if (c.type !== 'back') {
-                     return `<div class="mini-card ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="${titleText}">${c.name[0]}</div>`;
+                     return `<div class="mini-card ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" data-pid="${pid}" title="${titleText}">${c.name[0]}</div>`;
                 }
-                return `<div class="mini-card hand-card-back ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="手牌"></div>`;
+                return `<div class="mini-card hand-card-back ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" data-pid="${pid}" title="手牌"></div>`;
             }
-            
+
             const displayName = isDataHidden ? '?' : c.name;
-            return `<div class="mini-card ${isDataHidden?'hidden':''} ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" title="${titleText}">${isDataHidden?'?':(displayName[0] || '?')}</div>`;
+            return `<div class="mini-card ${isDataHidden?'hidden':''} ${visClass}" data-uuid="${c.uuid}" data-zone="${zone}" data-pid="${pid}" title="${titleText}">${isDataHidden?'?':(displayName[0] || '?')}</div>`;
         }).join('');
     }
     function bindMiniCardEvents(parent, pid) {
         parent.querySelectorAll('.mini-card').forEach(el => {
             el.draggable = true;
             el.ondragstart = (e) => dragStart(e, el.dataset.zone, pid, el.dataset.uuid);
+            el.dataset.pid = pid;
+            el.addEventListener('touchstart', onTouchStart, { passive: false });
             const card = getCard(el.dataset.uuid);
             el.oncontextmenu = (e) => showMenu(e, 'zone_card', {card, zone:el.dataset.zone, pid});
             el.onclick = () => socket.emit('game_action', {roomId, type:'toggle_card_visible', data:{targetPid:pid, uuid:el.dataset.uuid}});
@@ -873,6 +1012,7 @@
     function createCardEl(c) {
         const el = document.createElement('div');
         el.className = `card ${['heart','diamond'].includes(c.suit || '') ? 'red' : 'black'}`;
+        el.dataset.uuid = c.uuid || '';
         el.innerHTML = renderCardInner(c);
         return el;
     }
